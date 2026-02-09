@@ -7,8 +7,10 @@ from aiogram.types import Message
 from app.core.db import check_db
 from app.core.redis import check_redis
 from app.core.settings import get_settings
+from app.tools.registry_setup import build_registry
 
 router = Router()
+registry = build_registry()
 
 
 @router.message(Command("start"))
@@ -48,3 +50,13 @@ async def cmd_help(message: Message) -> None:
         "• покажи последние 7 дней выручку\n"
     )
     await message.answer(text)
+
+
+@router.message(Command("tools"))
+async def cmd_tools(message: Message) -> None:
+    tools = registry.list_tools()
+    lines = ["Tools:"]
+    for tool in tools:
+        status = "stub" if tool["is_stub"] else "ok"
+        lines.append(f"• {tool['name']} v{tool['version']} ({status})")
+    await message.answer("\n".join(lines))

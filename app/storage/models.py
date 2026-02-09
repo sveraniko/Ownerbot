@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, date
 
-from sqlalchemy import Date, DateTime, Integer, String, Numeric, Text, func
+from sqlalchemy import Date, DateTime, Integer, String, Numeric, Text, func, Boolean
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -54,3 +54,14 @@ class OwnerbotDemoKpiDaily(Base):
     orders_paid: Mapped[int] = mapped_column(Integer, nullable=False)
     orders_created: Mapped[int] = mapped_column(Integer, nullable=False)
     aov: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+
+
+class OwnerbotDemoChatThread(Base):
+    __tablename__ = "ownerbot_demo_chat_threads"
+
+    thread_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    customer_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    open: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=True)
+    last_customer_message_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_manager_reply_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
