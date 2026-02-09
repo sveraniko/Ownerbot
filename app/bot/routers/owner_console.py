@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from datetime import date, timedelta
 
@@ -27,8 +28,16 @@ registry = build_registry()
 
 def intent_from_text(text: str) -> tuple[str | None, dict]:
     normalized = text.lower()
-    if "7" in normalized and "дн" in normalized and "выруч" in normalized:
-        return "revenue_trend", {}
+    trend_match = re.search(r"(\d{1,2})\s*(?:дней|дня|дн)", normalized)
+    if trend_match and any(word in normalized for word in ["выруч", "продаж"]):
+        days = int(trend_match.group(1))
+        if 1 <= days <= 60:
+            return "revenue_trend", {"days": days}
+    order_match = re.search(r"\b(?:заказ|order)\s*(ob-\d+)\b", text, flags=re.IGNORECASE)
+    if order_match:
+        return "order_detail", {"order_id": order_match.group(1).upper()}
+    if any(word in normalized for word in ["чаты", "чат", "без ответа", "не отвеч"]):
+        return "chats_unanswered", {}
     if any(word in normalized for word in ["kpi", "выруч", "продаж"]):
         payload: dict = {}
         if "вчера" in normalized:

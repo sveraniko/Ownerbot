@@ -46,6 +46,34 @@ OwnerBot — отдельный бот/сервис поверх SIS, котор
    docker compose up --build
    ```
 
+## Local development
+1. Create venv:
+   ```bash
+   python -m venv .venv
+   ```
+2. Activate:
+   ```bash
+   . .venv/bin/activate
+   ```
+   Windows PowerShell:
+   ```powershell
+   .venv\Scripts\Activate.ps1
+   ```
+3. Install deps:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+## Running tests
+- Local:
+  ```bash
+  pytest -q
+  ```
+- Docker:
+  ```bash
+  docker compose run --rm ownerbot_app pytest -q
+  ```
+
 ## ENV vars (минимум)
 - `BOT_TOKEN` — обязательный токен бота.
 - `OWNER_IDS` — owner allowlist.

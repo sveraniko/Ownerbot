@@ -34,14 +34,14 @@
 
 ## 3) Tools v1
 ### Реализовано (DEMO)
-- `kpi_snapshot`
-- `orders_search`
+- `kpi_snapshot` — payload: `day?`; output: day, revenue_gross/net, orders_paid/created, aov.
+- `orders_search` — payload: `status?`, `limit?`; output: count + orders list.
+- `revenue_trend` — payload: `days`, `end_day?`; output: series + totals + delta_vs_prev_window.
+- `order_detail` — payload: `order_id`; output: order fields (status, amount, customer, timestamps).
+- `chats_unanswered` — payload: `limit?`; output: count + threads with last message timestamps.
 
 ### Stub (NOT_IMPLEMENTED)
-- `revenue_trend`
 - `funnel_snapshot`
-- `order_detail`
-- `chats_unanswered`
 - `top_products`
 - `inventory_status`
 - `refunds_anomalies`

@@ -54,9 +54,19 @@ def upgrade() -> None:
         sa.Column("orders_created", sa.Integer(), nullable=False),
         sa.Column("aov", sa.Numeric(12, 2), nullable=False),
     )
+    op.create_table(
+        "ownerbot_demo_chat_threads",
+        sa.Column("thread_id", sa.String(length=64), primary_key=True),
+        sa.Column("customer_id", sa.String(length=64), nullable=False),
+        sa.Column("open", sa.Boolean(), nullable=False),
+        sa.Column("last_customer_message_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("last_manager_reply_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+    )
 
 
 def downgrade() -> None:
+    op.drop_table("ownerbot_demo_chat_threads")
     op.drop_table("ownerbot_demo_kpi_daily")
     op.drop_table("ownerbot_demo_orders")
     op.drop_table("ownerbot_audit_events")

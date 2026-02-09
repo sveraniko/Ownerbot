@@ -97,3 +97,4 @@ class ToolDefinition:
     version: str
     payload_model: type[BaseModel]
     handler: Any
+    is_stub: bool = False
