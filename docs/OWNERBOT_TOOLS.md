@@ -39,6 +39,9 @@
 - `revenue_trend` — payload: `days`, `end_day?`; output: series + totals + delta_vs_prev_window.
 - `order_detail` — payload: `order_id`; output: order fields (status, amount, customer, timestamps).
 - `chats_unanswered` — payload: `limit?`; output: count + threads with last message timestamps.
+- `flag_order` (action) — payload: `order_id`, `reason?`, `dry_run?`; output:
+  - dry_run: preview (`dry_run`, `will_update`, `note`)
+  - commit: `order_id`, `flagged`, `reason`
 
 ### Stub (NOT_IMPLEMENTED)
 - `funnel_snapshot`
@@ -50,4 +53,3 @@
 - `adjust_price` (action)
 - `notify_team` (action)
 - `pause_campaign` (action)
-- `flag_order` (action)

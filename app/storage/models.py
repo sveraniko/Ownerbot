@@ -43,6 +43,10 @@ class OwnerbotDemoOrder(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     customer_id: Mapped[str] = mapped_column(String(64), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    flagged: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=False)
+    flag_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    flagged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    flagged_by: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class OwnerbotDemoKpiDaily(Base):

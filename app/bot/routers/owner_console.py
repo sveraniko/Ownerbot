@@ -1,16 +1,20 @@
 from __future__ import annotations
 
+import inspect
 import logging
 import re
 import time
+import uuid
 from datetime import date, timedelta
 
 from aiogram import F, Router
 from aiogram.types import Message
 
+from app.actions.confirm_flow import create_confirm_token
 from app.asr.cache import get_or_transcribe
 from app.asr.mock_provider import MockASRProvider
 from app.asr.telegram_voice import download_voice_bytes
+from app.bot.keyboards.confirm import confirm_keyboard
 from app.core.logging import get_correlation_id
 from app.core.redis import get_redis
 from app.core.settings import get_settings
@@ -66,7 +70,18 @@ def format_response(response: ToolResponse) -> str:
                 lines.append(f"• {source}")
         else:
             lines.append("• (none)")
+    if response.warnings:
+        lines.append("\nWarnings:")
+        for warning in response.warnings:
+            lines.append(f"• {warning.code}: {warning.message}")
     return "\n".join(lines)
+
+
+async def call_tool_handler(tool, payload, correlation_id: str, session, actor: ToolActor) -> ToolResponse:
+    params = inspect.signature(tool.handler).parameters
+    if "actor" in params:
+        return await tool.handler(payload, correlation_id, session, actor)
+    return await tool.handler(payload, correlation_id, session)
 
 
 async def handle_tool_call(message: Message, text: str) -> None:
@@ -92,10 +107,12 @@ async def handle_tool_call(message: Message, text: str) -> None:
         return
 
     payload = tool.payload_model(**payload_data)
+    is_action = tool.kind == "action"
+    idempotency_key = str(uuid.uuid4()) if is_action else get_correlation_id()
     tool_request = ToolRequest(
         tool=tool.name,
         correlation_id=get_correlation_id(),
-        idempotency_key=get_correlation_id(),
+        idempotency_key=idempotency_key,
         actor=ToolActor(owner_user_id=message.from_user.id),
         tenant=ToolTenant(
             project="OwnerBot",
@@ -111,13 +128,32 @@ async def handle_tool_call(message: Message, text: str) -> None:
 
     start = time.perf_counter()
     async with session_scope() as session:
-        response = await tool.handler(payload, tool_request.correlation_id, session)
+        response = await call_tool_handler(tool, payload, tool_request.correlation_id, session, tool_request.actor)
     response = verify_response(response)
     latency_ms = int((time.perf_counter() - start) * 1000)
     logger.info("tool_call", extra={"tool": tool_name, "latency_ms": latency_ms, "status": response.status})
 
     await write_audit_event("tool_called", {"tool": tool_name})
     await write_audit_event("tool_result", {"tool": tool_name, "status": response.status})
+
+    if is_action and getattr(payload, "dry_run", False):
+        if response.status == "error":
+            await message.answer(format_response(response))
+            return
+        payload_commit = payload.model_dump()
+        payload_commit["dry_run"] = False
+        confirm_payload = {
+            "tool_name": tool.name,
+            "payload_commit": payload_commit,
+            "owner_user_id": message.from_user.id,
+            "idempotency_key": idempotency_key,
+        }
+        token = await create_confirm_token(confirm_payload)
+        await message.answer(
+            format_response(response),
+            reply_markup=confirm_keyboard(f"confirm:{token}", f"cancel:{token}"),
+        )
+        return
 
     await message.answer(format_response(response))
 

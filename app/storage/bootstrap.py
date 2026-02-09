@@ -46,29 +46,36 @@ async def seed_demo_data() -> None:
 
         existing_orders = await session.execute(select(OwnerbotDemoOrder.order_id))
         existing_order_ids = {row[0] for row in existing_orders.all()}
+        demo_orders = [
+            {"order_id": "OB-1001", "status": "pending", "amount": 120.00},
+            {"order_id": "OB-1002", "status": "paid", "amount": 89.50},
+            {
+                "order_id": "OB-1003",
+                "status": "stuck",
+                "amount": 199.99,
+                "flagged": False,
+                "flag_reason": None,
+            },
+            {"order_id": "OB-1004", "status": "paid", "amount": 45.00},
+            {"order_id": "OB-1005", "status": "stuck", "amount": 310.10},
+            {"order_id": "OB-1006", "status": "pending", "amount": 150.75},
+            {"order_id": "OB-1007", "status": "paid", "amount": 59.99},
+            {"order_id": "OB-1008", "status": "stuck", "amount": 220.40},
+            {"order_id": "OB-1009", "status": "paid", "amount": 95.25},
+            {"order_id": "OB-1010", "status": "paid", "amount": 180.00},
+        ]
         orders: Sequence[OwnerbotDemoOrder] = [
             OwnerbotDemoOrder(
-                order_id=order_id,
-                status=status,
-                amount=amount,
+                order_id=order_data["order_id"],
+                status=order_data["status"],
+                amount=order_data["amount"],
                 currency="EUR",
                 customer_id=f"cust_{index + 1:03d}",
+                flagged=order_data.get("flagged", False),
+                flag_reason=order_data.get("flag_reason"),
             )
-            for index, (order_id, status, amount) in enumerate(
-                [
-                    ("OB-1001", "pending", 120.00),
-                    ("OB-1002", "paid", 89.50),
-                    ("OB-1003", "stuck", 199.99),
-                    ("OB-1004", "paid", 45.00),
-                    ("OB-1005", "stuck", 310.10),
-                    ("OB-1006", "pending", 150.75),
-                    ("OB-1007", "paid", 59.99),
-                    ("OB-1008", "stuck", 220.40),
-                    ("OB-1009", "paid", 95.25),
-                    ("OB-1010", "paid", 180.00),
-                ]
-            )
-            if order_id not in existing_order_ids
+            for index, order_data in enumerate(demo_orders)
+            if order_data["order_id"] not in existing_order_ids
         ]
 
         existing_threads = await session.execute(select(OwnerbotDemoChatThread.thread_id))

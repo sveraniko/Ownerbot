@@ -26,7 +26,14 @@ OwnerBot стартует автономно:
 
 Если SIS недоступен, OwnerBot возвращает структурированную ошибку `UPSTREAM_UNAVAILABLE`.
 
-## 4) Dev/Test workflow
+## 4) ACTION pipeline (dry_run → confirm → commit)
+- Action tools запускаются только через подтверждение: первый вызов всегда `dry_run=True`.
+- В ответе dry_run приходит preview + note “Требует подтверждения”.
+- OwnerBot создаёт confirm token и показывает inline‑кнопки ✅/❌.
+- При подтверждении выполняется commit с `dry_run=False`.
+- Коммит защищён idempotency_key (uuid4), чтобы повторные подтверждения не дублировали действие.
+
+## 5) Dev/Test workflow
 ### Локально
 ```bash
 python -m venv .venv
