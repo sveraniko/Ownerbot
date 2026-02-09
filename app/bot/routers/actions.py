@@ -20,11 +20,21 @@ router = Router()
 registry = build_registry()
 
 
-async def call_tool_handler(tool, payload, correlation_id: str, session, actor: ToolActor) -> ToolResponse:
+async def call_tool_handler(
+    tool,
+    payload,
+    correlation_id: str,
+    session,
+    actor: ToolActor,
+    bot=None,
+) -> ToolResponse:
     params = inspect.signature(tool.handler).parameters
+    kwargs = {}
     if "actor" in params:
-        return await tool.handler(payload, correlation_id, session, actor)
-    return await tool.handler(payload, correlation_id, session)
+        kwargs["actor"] = actor
+    if "bot" in params:
+        kwargs["bot"] = bot
+    return await tool.handler(payload, correlation_id, session, **kwargs)
 
 
 @router.callback_query(F.data.startswith("confirm:"))
@@ -76,7 +86,9 @@ async def handle_confirm(callback_query: CallbackQuery) -> None:
             return
 
         payload_model = tool.payload_model(**payload_commit)
-        response = await call_tool_handler(tool, payload_model, correlation_id, session, actor)
+        response = await call_tool_handler(
+            tool, payload_model, correlation_id, session, actor, bot=callback_query.bot
+        )
         response = verify_response(response)
 
         status = "committed" if response.status == "ok" else "failed"

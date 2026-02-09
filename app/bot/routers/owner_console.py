@@ -10,6 +10,7 @@ from datetime import date, timedelta
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import Message
+from pydantic import ValidationError
 
 from app.actions.confirm_flow import create_confirm_token
 from app.asr.cache import get_or_transcribe
@@ -32,7 +33,18 @@ registry = build_registry()
 
 
 def intent_from_text(text: str) -> tuple[str | None, dict]:
-    normalized = text.lower()
+    normalized = text.lower().strip()
+    if normalized.startswith("/notify"):
+        notify_message = re.sub(r"^/notify(?:@\w+)?\s*", "", text, flags=re.IGNORECASE).strip()
+        return "notify_team", {"message": notify_message}
+
+    notify_phrases = ["уведомь команду", "сообщи менеджеру", "пни менеджера"]
+    for phrase in notify_phrases:
+        index = normalized.find(phrase)
+        if index != -1:
+            message = text[index + len(phrase) :].strip()
+            message = message.lstrip(" -—:\t").strip()
+            return "notify_team", {"message": message}
     flag_keywords = ["флаг", "пометь", "отметь", "flag"]
     flag_order_match = re.search(r"\bob-\d+\b", text, flags=re.IGNORECASE)
     if flag_order_match and any(word in normalized for word in flag_keywords):
@@ -92,11 +104,21 @@ def format_response(response: ToolResponse) -> str:
     return "\n".join(lines)
 
 
-async def call_tool_handler(tool, payload, correlation_id: str, session, actor: ToolActor) -> ToolResponse:
+async def call_tool_handler(
+    tool,
+    payload,
+    correlation_id: str,
+    session,
+    actor: ToolActor,
+    bot=None,
+) -> ToolResponse:
     params = inspect.signature(tool.handler).parameters
+    kwargs = {}
     if "actor" in params:
-        return await tool.handler(payload, correlation_id, session, actor)
-    return await tool.handler(payload, correlation_id, session)
+        kwargs["actor"] = actor
+    if "bot" in params:
+        kwargs["bot"] = bot
+    return await tool.handler(payload, correlation_id, session, **kwargs)
 
 
 async def handle_tool_call(message: Message, text: str) -> None:
@@ -121,7 +143,16 @@ async def handle_tool_call(message: Message, text: str) -> None:
         await message.answer(format_response(response))
         return
 
-    payload = tool.payload_model(**payload_data)
+    try:
+        payload = tool.payload_model(**payload_data)
+    except ValidationError:
+        response = ToolResponse.error(
+            correlation_id=get_correlation_id(),
+            code="MESSAGE_REQUIRED" if tool_name == "notify_team" else "VALIDATION_ERROR",
+            message="Нужен текст уведомления." if tool_name == "notify_team" else "Некорректные данные.",
+        )
+        await message.answer(format_response(response))
+        return
     is_action = tool.kind == "action"
     idempotency_key = str(uuid.uuid4()) if is_action else get_correlation_id()
     tool_request = ToolRequest(
@@ -143,7 +174,9 @@ async def handle_tool_call(message: Message, text: str) -> None:
 
     start = time.perf_counter()
     async with session_scope() as session:
-        response = await call_tool_handler(tool, payload, tool_request.correlation_id, session, tool_request.actor)
+        response = await call_tool_handler(
+            tool, payload, tool_request.correlation_id, session, tool_request.actor, bot=message.bot
+        )
     response = verify_response(response)
     latency_ms = int((time.perf_counter() - start) * 1000)
     logger.info("tool_call", extra={"tool": tool_name, "latency_ms": latency_ms, "status": response.status})
