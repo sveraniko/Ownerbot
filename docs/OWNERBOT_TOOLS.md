@@ -42,6 +42,10 @@
 - `flag_order` (action) — payload: `order_id`, `reason?`, `dry_run?`; output:
   - dry_run: preview (`dry_run`, `will_update`, `note`)
   - commit: `order_id`, `flagged`, `reason`
+- `notify_team` (action) — payload: `message`, `dry_run?`, `silent?`; output:
+  - dry_run: preview (`dry_run`, `recipients`, `message_preview`, `note`)
+  - commit: `sent`, `failed`, `message` (+ warnings on partial delivery)
+  - allowlist: отправка только в `MANAGER_CHAT_IDS` (ENV)
 
 ### Stub (NOT_IMPLEMENTED)
 - `funnel_snapshot`
@@ -51,5 +55,4 @@
 - `truststack_signals`
 - `create_coupon` (action, поддерживает dry_run payload)
 - `adjust_price` (action)
-- `notify_team` (action)
 - `pause_campaign` (action)

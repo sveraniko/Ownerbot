@@ -12,6 +12,7 @@ class Settings(BaseSettings):
 
     bot_token: str = Field(alias="BOT_TOKEN")
     owner_ids: List[int] = Field(default_factory=list, alias="OWNER_IDS")
+    manager_chat_ids: List[int] = Field(default_factory=list, alias="MANAGER_CHAT_IDS")
     database_url: str = Field(alias="DATABASE_URL")
     redis_url: str = Field(alias="REDIS_URL")
     upstream_mode: str = Field(default="DEMO", alias="UPSTREAM_MODE")
@@ -23,6 +24,17 @@ class Settings(BaseSettings):
     @field_validator("owner_ids", mode="before")
     @classmethod
     def parse_owner_ids(cls, value: object) -> List[int]:
+        if isinstance(value, list):
+            return [int(v) for v in value]
+        if isinstance(value, str):
+            if not value.strip():
+                return []
+            return [int(v.strip()) for v in value.split(",") if v.strip()]
+        return []
+
+    @field_validator("manager_chat_ids", mode="before")
+    @classmethod
+    def parse_manager_chat_ids(cls, value: object) -> List[int]:
         if isinstance(value, list):
             return [int(v) for v in value]
         if isinstance(value, str):

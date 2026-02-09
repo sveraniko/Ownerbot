@@ -32,6 +32,7 @@ OwnerBot стартует автономно:
 - OwnerBot создаёт confirm token и показывает inline‑кнопки ✅/❌.
 - При подтверждении выполняется commit с `dry_run=False`.
 - Коммит защищён idempotency_key (uuid4), чтобы повторные подтверждения не дублировали действие.
+- Некоторые action tools требуют bot context для реальной отправки сообщений; он прокидывается через routers.
 
 ## 5) Dev/Test workflow
 ### Локально

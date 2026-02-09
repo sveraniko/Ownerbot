@@ -34,7 +34,7 @@ def build_registry() -> ToolRegistry:
     registry.register("truststack_signals", "1.0", truststack_signals.Payload, truststack_signals.handle, is_stub=True)
     registry.register("create_coupon", "1.0", create_coupon.Payload, create_coupon.handle, is_stub=True, kind="action")
     registry.register("adjust_price", "1.0", adjust_price.Payload, adjust_price.handle, is_stub=True, kind="action")
-    registry.register("notify_team", "1.0", notify_team.Payload, notify_team.handle, is_stub=True, kind="action")
+    registry.register("notify_team", "1.0", notify_team.Payload, notify_team.handle, is_stub=False, kind="action")
     registry.register("pause_campaign", "1.0", pause_campaign.Payload, pause_campaign.handle, is_stub=True, kind="action")
     registry.register("flag_order", "1.0", flag_order.Payload, flag_order.handle, kind="action")
     return registry
