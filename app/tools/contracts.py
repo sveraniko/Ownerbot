@@ -98,3 +98,4 @@ class ToolDefinition:
     payload_model: type[BaseModel]
     handler: Any
     is_stub: bool = False
+    kind: str = "read"

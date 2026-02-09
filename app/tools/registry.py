@@ -26,6 +26,7 @@ class ToolRegistry:
         payload_model: type[BaseModel],
         handler: Any,
         is_stub: bool = False,
+        kind: str = "read",
     ) -> None:
         self._tools[name] = ToolDefinition(
             name=name,
@@ -33,6 +34,7 @@ class ToolRegistry:
             payload_model=payload_model,
             handler=handler,
             is_stub=is_stub,
+            kind=kind,
         )
 
     def get(self, name: str) -> ToolDefinition | None:
@@ -45,6 +47,7 @@ class ToolRegistry:
                 "version": tool.version,
                 "payload_model": tool.payload_model.__name__,
                 "is_stub": tool.is_stub,
+                "kind": tool.kind,
             }
             for tool in self._tools.values()
         ]

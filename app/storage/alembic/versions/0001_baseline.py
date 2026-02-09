@@ -44,6 +44,10 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column("customer_id", sa.String(length=64), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column("flagged", sa.Boolean(), nullable=False, server_default=sa.false()),
+        sa.Column("flag_reason", sa.Text(), nullable=True),
+        sa.Column("flagged_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("flagged_by", sa.Integer(), nullable=True),
     )
     op.create_table(
         "ownerbot_demo_kpi_daily",
