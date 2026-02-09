@@ -37,6 +37,7 @@ async def cmd_start(message: Message) -> None:
         "• дай KPI за вчера\n"
         "• что с заказами, что зависло\n"
         "• покажи последние 7 дней выручку\n"
+        "• флагни заказ OB-1003 причина тест\n"
     )
     await message.answer(text)
 
@@ -48,6 +49,7 @@ async def cmd_help(message: Message) -> None:
         "• дай KPI за вчера\n"
         "• что с заказами, что зависло\n"
         "• покажи последние 7 дней выручку\n"
+        "• флагни заказ OB-1003 причина тест\n"
     )
     await message.answer(text)
 
