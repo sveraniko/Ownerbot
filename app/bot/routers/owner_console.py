@@ -1,0 +1,145 @@
+from __future__ import annotations
+
+import logging
+import time
+from datetime import date, timedelta
+
+from aiogram import F, Router
+from aiogram.types import Message
+
+from app.asr.cache import get_or_transcribe
+from app.asr.mock_provider import MockASRProvider
+from app.asr.telegram_voice import download_voice_bytes
+from app.core.logging import get_correlation_id
+from app.core.redis import get_redis
+from app.core.settings import get_settings
+from app.core.db import session_scope
+from app.storage.bootstrap import write_audit_event
+from app.tools.contracts import ToolActor, ToolRequest, ToolResponse, ToolTenant
+from app.tools.providers.sis_gateway import upstream_unavailable
+from app.tools.registry_setup import build_registry
+from app.tools.verifier import verify_response
+
+router = Router()
+logger = logging.getLogger(__name__)
+registry = build_registry()
+
+
+def intent_from_text(text: str) -> tuple[str | None, dict]:
+    normalized = text.lower()
+    if "7" in normalized and "дн" in normalized and "выруч" in normalized:
+        return "revenue_trend", {}
+    if any(word in normalized for word in ["kpi", "выруч", "продаж"]):
+        payload: dict = {}
+        if "вчера" in normalized:
+            payload["day"] = (date.today() - timedelta(days=1)).isoformat()
+        return "kpi_snapshot", payload
+    if any(word in normalized for word in ["заказ", "завис", "неоплач"]):
+        payload = {}
+        if "завис" in normalized or "неоплач" in normalized:
+            payload["status"] = "stuck"
+        return "orders_search", payload
+    return None, {}
+
+
+def format_response(response: ToolResponse) -> str:
+    if response.status == "error" and response.error:
+        return f"Ошибка: {response.error.code}\n{response.error.message}"
+    lines = ["Суть:", "Запрос выполнен."]
+    if response.data:
+        lines.append("\nЦифры:")
+        for key, value in response.data.items():
+            lines.append(f"• {key}: {value}")
+    if response.provenance:
+        lines.append("\nProvenance:")
+        if response.provenance.sources:
+            for source in response.provenance.sources:
+                lines.append(f"• {source}")
+        else:
+            lines.append("• (none)")
+    return "\n".join(lines)
+
+
+async def handle_tool_call(message: Message, text: str) -> None:
+    settings = get_settings()
+    tool_name, payload_data = intent_from_text(text)
+    if tool_name is None:
+        await message.answer("Не понял запрос. Попробуй /help.")
+        return
+
+    if settings.upstream_mode != "DEMO":
+        response = upstream_unavailable(get_correlation_id())
+        await message.answer(format_response(response))
+        return
+
+    tool = registry.get(tool_name)
+    if tool is None:
+        response = ToolResponse.error(
+            correlation_id=get_correlation_id(),
+            code="NOT_IMPLEMENTED",
+            message=f"Tool {tool_name} is not registered.",
+        )
+        await message.answer(format_response(response))
+        return
+
+    payload = tool.payload_model(**payload_data)
+    tool_request = ToolRequest(
+        tool=tool.name,
+        correlation_id=get_correlation_id(),
+        idempotency_key=get_correlation_id(),
+        actor=ToolActor(owner_user_id=message.from_user.id),
+        tenant=ToolTenant(
+            project="OwnerBot",
+            shop_id="shop_001",
+            currency="EUR",
+            timezone="Europe/Berlin",
+            locale="ru-RU",
+        ),
+        payload=payload.model_dump(),
+    )
+
+    await write_audit_event("user_message_received", {"text": text, "tool": tool_name})
+
+    start = time.perf_counter()
+    async with session_scope() as session:
+        response = await tool.handler(payload, tool_request.correlation_id, session)
+    response = verify_response(response)
+    latency_ms = int((time.perf_counter() - start) * 1000)
+    logger.info("tool_call", extra={"tool": tool_name, "latency_ms": latency_ms, "status": response.status})
+
+    await write_audit_event("tool_called", {"tool": tool_name})
+    await write_audit_event("tool_result", {"tool": tool_name, "status": response.status})
+
+    await message.answer(format_response(response))
+
+
+@router.message(F.text)
+async def handle_text(message: Message) -> None:
+    if message.text is None:
+        return
+    await handle_tool_call(message, message.text)
+
+
+@router.message(F.voice)
+async def handle_voice(message: Message) -> None:
+    if message.voice is None:
+        return
+    redis_client = await get_redis()
+    audio_bytes = await download_voice_bytes(message.bot, message.voice.file_id)
+    provider = MockASRProvider()
+    result = await get_or_transcribe(redis_client, provider, audio_bytes)
+
+    await write_audit_event(
+        "voice_transcribed",
+        {"confidence": result.confidence, "text": result.text},
+    )
+
+    settings = get_settings()
+    low_conf_key = f"voice_low_conf:{message.from_user.id}"
+    if result.confidence < settings.asr_confidence_threshold:
+        low_conf = await redis_client.get(low_conf_key)
+        if not low_conf:
+            await redis_client.set(low_conf_key, "1", ex=300)
+            await message.answer("Не расслышал. Повтори голосом или напиши текстом.")
+            return
+    await handle_tool_call(message, result.text)
