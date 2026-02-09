@@ -1,0 +1,11 @@
+aiogram==3.4.1
+pydantic==2.6.4
+pydantic-settings==2.2.1
+SQLAlchemy==2.0.27
+asyncpg==0.29.0
+alembic==1.13.1
+redis==5.0.2
+httpx==0.26.0
+pytest==8.0.2
+pytest-asyncio==0.23.5
+aiosqlite==0.20.0
