@@ -8,6 +8,7 @@ import uuid
 from datetime import date, timedelta
 
 from aiogram import F, Router
+from aiogram.filters import Command
 from aiogram.types import Message
 
 from app.actions.confirm_flow import create_confirm_token
@@ -32,6 +33,20 @@ registry = build_registry()
 
 def intent_from_text(text: str) -> tuple[str | None, dict]:
     normalized = text.lower()
+    flag_keywords = ["флаг", "пометь", "отметь", "flag"]
+    flag_order_match = re.search(r"\bob-\d+\b", text, flags=re.IGNORECASE)
+    if flag_order_match and any(word in normalized for word in flag_keywords):
+        reason = ""
+        reason_match = re.search(r"\bпричина\b\s*(.+)", text, flags=re.IGNORECASE)
+        if reason_match:
+            reason = reason_match.group(1).strip()
+        else:
+            reason = text[flag_order_match.end() :].strip()
+            reason = reason.lstrip(" -—:\t").strip()
+        payload = {"order_id": flag_order_match.group(0).upper()}
+        if reason:
+            payload["reason"] = reason
+        return "flag_order", payload
     trend_match = re.search(r"(\d{1,2})\s*(?:дней|дня|дн)", normalized)
     if trend_match and any(word in normalized for word in ["выруч", "продаж"]):
         days = int(trend_match.group(1))
@@ -156,6 +171,17 @@ async def handle_tool_call(message: Message, text: str) -> None:
         return
 
     await message.answer(format_response(response))
+
+
+@router.message(Command("flag"))
+async def handle_flag_command(message: Message) -> None:
+    if message.text is None:
+        return
+    command_text = re.sub(r"^/flag(?:@\w+)?\s*", "", message.text, flags=re.IGNORECASE)
+    if not command_text:
+        await message.answer("Формат: /flag OB-1003 причина ...")
+        return
+    await handle_tool_call(message, f"flag {command_text}")
 
 
 @router.message(F.text)
