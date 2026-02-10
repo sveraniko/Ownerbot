@@ -82,6 +82,14 @@ OwnerBot — отдельный бот/сервис поверх SIS, котор
 - `DATABASE_URL` — Postgres для OwnerBot.
 - `REDIS_URL` — Redis для OwnerBot.
 - `UPSTREAM_MODE` — `DEMO` (по умолчанию), `SIS_HTTP` (позже), `SIS_DB_RO` (позже).
+- `ASR_PROVIDER` — `mock` (default) или `openai` для реального ASR.
+- `OPENAI_API_KEY` — обязателен при `ASR_PROVIDER=openai`.
+- `OPENAI_ASR_MODEL` — модель распознавания (по умолчанию `gpt-4o-mini-transcribe`).
+- `OPENAI_BASE_URL` — base URL OpenAI API (по умолчанию `https://api.openai.com`).
+- `ASR_TIMEOUT_SEC` — таймаут ASR запроса (сек).
+- `ASR_MAX_RETRIES` — число ретраев для 429/5xx.
+- `ASR_RETRY_BACKOFF_BASE_SEC` — базовый backoff (сек).
+- `ASR_CONVERT_FORMAT` — формат конверсии `wav`/`webm` для voice.
 
 ## DEMO mode
 - По умолчанию `UPSTREAM_MODE=DEMO`.

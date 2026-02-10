@@ -14,7 +14,8 @@ from pydantic import ValidationError
 
 from app.actions.confirm_flow import create_confirm_token
 from app.asr.cache import get_or_transcribe
-from app.asr.mock_provider import MockASRProvider
+from app.asr.errors import ASRError
+from app.asr.factory import get_asr_provider
 from app.asr.telegram_voice import download_voice_bytes
 from app.bot.keyboards.confirm import confirm_keyboard
 from app.core.logging import get_correlation_id
@@ -230,15 +231,24 @@ async def handle_voice(message: Message) -> None:
         return
     redis_client = await get_redis()
     audio_bytes = await download_voice_bytes(message.bot, message.voice.file_id)
-    provider = MockASRProvider()
-    result = await get_or_transcribe(redis_client, provider, audio_bytes)
+    settings = get_settings()
+    try:
+        provider = get_asr_provider(settings)
+        result = await get_or_transcribe(redis_client, provider, audio_bytes)
+    except ASRError as exc:
+        await write_audit_event("asr_failed", {"code": exc.code})
+        await message.answer("ASR недоступен. Напиши запрос текстом.")
+        return
+    except Exception:
+        await write_audit_event("asr_failed", {"code": "ASR_FAILED"})
+        await message.answer("ASR недоступен. Напиши запрос текстом.")
+        return
 
     await write_audit_event(
         "voice_transcribed",
         {"confidence": result.confidence, "text": result.text},
     )
 
-    settings = get_settings()
     low_conf_key = f"voice_low_conf:{message.from_user.id}"
     if result.confidence < settings.asr_confidence_threshold:
         low_conf = await redis_client.get(low_conf_key)
