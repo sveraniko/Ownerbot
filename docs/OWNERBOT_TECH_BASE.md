@@ -7,7 +7,7 @@
 - **app/core** — настройки, логирование, DB/Redis, time/security.
 - **app/bot** — Telegram entrypoint, routers, middlewares, keyboards.
 - **app/tools** — contracts → registry → verifier → tool handlers.
-- **app/asr** — voice pipeline (download → ASR provider → cache).
+- **app/asr** — voice pipeline (download → конвертация → ASR provider → cache).
 - **app/actions** — dry_run → confirm → commit каркас + idempotency.
 - **app/storage** — ORM модели + Alembic baseline.
 
@@ -25,6 +25,12 @@ OwnerBot стартует автономно:
 - **SIS_DB_RO (later)** — read-only доступ к SIS DB через контрактные read models.
 
 Если SIS недоступен, OwnerBot возвращает структурированную ошибку `UPSTREAM_UNAVAILABLE`.
+
+## 4) Voice / ASR
+- `ASR_PROVIDER`: `mock` (default) или `openai`.
+- Для `openai` используется endpoint `POST /v1/audio/transcriptions` (через `httpx`, без SDK).
+- Telegram voice (ogg/opus) сначала конвертируется в `wav`/`webm` через `ffmpeg` (pipe I/O).
+- Для конвертации требуется установленный `ffmpeg` в контейнере.
 
 ## 4) ACTION pipeline (dry_run → confirm → commit)
 - Action tools запускаются только через подтверждение: первый вызов всегда `dry_run=True`.
