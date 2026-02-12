@@ -15,3 +15,16 @@ def test_tool_envelope_provenance_required():
     assert verified.status == "error"
     assert verified.error is not None
     assert verified.error.code == "PROVENANCE_MISSING"
+
+
+def test_tool_envelope_provenance_window_required_for_numeric():
+    response = ToolResponse.ok(
+        correlation_id="corr",
+        data={"revenue": 123.4},
+        provenance=ToolProvenance(sources=["demo"], window=None),
+    )
+    verified = verify_response(response)
+
+    assert verified.status == "error"
+    assert verified.error is not None
+    assert verified.error.code == "PROVENANCE_INCOMPLETE"

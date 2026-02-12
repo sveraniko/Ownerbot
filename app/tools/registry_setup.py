@@ -17,6 +17,7 @@ from app.tools.impl import (
     notify_team,
     pause_campaign,
     flag_order,
+    retrospective_last,
 )
 
 
@@ -37,4 +38,5 @@ def build_registry() -> ToolRegistry:
     registry.register("notify_team", "1.0", notify_team.Payload, notify_team.handle, is_stub=False, kind="action")
     registry.register("pause_campaign", "1.0", pause_campaign.Payload, pause_campaign.handle, is_stub=True, kind="action")
     registry.register("flag_order", "1.0", flag_order.Payload, flag_order.handle, kind="action")
+    registry.register("retrospective_last", "1.0", retrospective_last.Payload, retrospective_last.handle)
     return registry

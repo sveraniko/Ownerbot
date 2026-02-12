@@ -79,3 +79,10 @@ docker compose run --rm ownerbot_app pytest -q
 - OwnerBot придерживается baseline-only policy: в `app/storage/alembic/versions` хранится ровно одна миграция `0001_baseline.py`.
 - Производственные индексы (audit/action/demo hot paths) добавляются только в baseline, без `0002+` ревизий.
 - После pull изменений baseline (например, PR-05E) локальную БД нужно пересобрать через `docker compose down -v` перед `docker compose up --build`.
+
+
+## 10) PR-08A observability / confidence / retrospective
+- Tool runner пишет audit-события `tool_call_started` и `tool_call_finished` (status/latency/warnings/error_code).
+- Voice pipeline пишет `asr_started` / `asr_finished` / `asr_failed` с provider и latency.
+- После каждого обработанного запроса пишется `retrospective` в `ownerbot_audit_events` c input_kind, intent_source (RULE/LLM), confidence score и artifacts.
+- Модуль `app/quality/confidence.py` фиксирует расчёт `data_confidence` и `decision_confidence`.
