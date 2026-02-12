@@ -23,6 +23,8 @@ async def test_owner_gate(monkeypatch):
         OWNER_IDS=[1],
         DATABASE_URL="sqlite+aiosqlite:///:memory:",
         REDIS_URL="redis://localhost:6379/0",
+        ACCESS_DENY_AUDIT_ENABLED=False,
+        ACCESS_DENY_NOTIFY_ONCE=False,
     )
     monkeypatch.setattr("app.core.settings.get_settings", lambda: settings)
 

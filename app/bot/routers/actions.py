@@ -12,7 +12,7 @@ from app.bot.ui.formatting import format_tool_response
 from app.core.db import session_scope
 from app.core.logging import get_correlation_id
 from app.core.redis import get_redis
-from app.storage.bootstrap import write_audit_event
+from app.core.audit import write_audit_event
 from app.tools.contracts import ToolActor, ToolResponse, ToolTenant
 from app.tools.registry_setup import build_registry
 

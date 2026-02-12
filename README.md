@@ -91,6 +91,14 @@ OwnerBot — отдельный бот/сервис поверх SIS, котор
 - `ASR_RETRY_BACKOFF_BASE_SEC` — базовый backoff (сек).
 - `ASR_CONVERT_FORMAT` — формат конверсии `wav`/`webm` для voice.
 
+## Security / Access gate
+- `OWNER_IDS` — единственный allowlist для доступа к OwnerBot.
+- Все non-owner updates (message/callback) блокируются middleware `OwnerGate`.
+- По умолчанию deny остаётся тихим (без ответа пользователю), но попытки пишутся в audit event `access_denied`.
+- Audit deny throttled по ключу `deny:{update_kind}:{user_id}` с TTL `ACCESS_DENY_AUDIT_TTL_SEC` (по умолчанию 60 сек), чтобы не спамить таблицу.
+- `ACCESS_DENY_AUDIT_ENABLED` — включает/выключает запись deny-аудита (default: `true`).
+- `ACCESS_DENY_NOTIFY_ONCE` — опциональный one-shot ответ `Нет доступа.` только в private chat и не чаще одного раза за TTL (default: `false`).
+
 ## DEMO mode
 - По умолчанию `UPSTREAM_MODE=DEMO`.
 - OwnerBot использует локальные demo таблицы, seeds при старте.

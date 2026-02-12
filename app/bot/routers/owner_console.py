@@ -21,7 +21,7 @@ from app.bot.ui.formatting import format_tool_response
 from app.core.logging import get_correlation_id
 from app.core.redis import get_redis
 from app.core.settings import get_settings
-from app.storage.bootstrap import write_audit_event
+from app.core.audit import write_audit_event
 from app.tools.contracts import ToolActor, ToolTenant
 from app.tools.providers.sis_gateway import upstream_unavailable
 from app.tools.registry_setup import build_registry

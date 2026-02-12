@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     asr_convert_format: str = Field(default="wav", alias="ASR_CONVERT_FORMAT")
     mock_asr_text: str = Field(default="дай kpi за вчера", alias="MOCK_ASR_TEXT")
     mock_asr_confidence: float = Field(default=0.93, alias="MOCK_ASR_CONFIDENCE")
+    access_deny_audit_enabled: bool = Field(default=True, alias="ACCESS_DENY_AUDIT_ENABLED")
+    access_deny_audit_ttl_sec: int = Field(default=60, alias="ACCESS_DENY_AUDIT_TTL_SEC")
+    access_deny_notify_once: bool = Field(default=False, alias="ACCESS_DENY_NOTIFY_ONCE")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
     @field_validator("owner_ids", mode="before")

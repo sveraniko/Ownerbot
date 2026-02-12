@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Sequence
@@ -9,8 +8,8 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import select
 
+from app.core.audit import write_audit_event
 from app.core.db import session_scope
-from app.core.logging import get_correlation_id
 from app.core.time import utcnow
 from app.storage.models import OwnerbotDemoKpiDaily, OwnerbotDemoOrder, OwnerbotDemoChatThread
 
@@ -130,17 +129,4 @@ async def seed_demo_data() -> None:
         session.add_all(kpi_rows)
         session.add_all(orders)
         session.add_all(threads)
-        await session.commit()
-
-
-async def write_audit_event(event_type: str, payload: dict) -> None:
-    from app.storage.models import OwnerbotAuditEvent
-
-    async with session_scope() as session:
-        event = OwnerbotAuditEvent(
-            correlation_id=get_correlation_id(),
-            event_type=event_type,
-            payload_json=json.dumps(payload, ensure_ascii=False),
-        )
-        session.add(event)
         await session.commit()

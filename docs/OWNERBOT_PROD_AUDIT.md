@@ -95,6 +95,11 @@
 - Do NOT touch:
   - allowlist semantics (`OWNER_IDS`) and middleware chain order.
 
+### PR-05C status update
+- ✅ Mitigated: visibility for denied access attempts (`access_denied`) is implemented in `OwnerGateMiddleware` for both message and callback flows.
+- ✅ Throttling added (`deny:{update_kind}:{user_id}` with TTL) to avoid audit-table spam during repeated probes.
+- ✅ Default deny UX remains silent; optional notify-once in private chat is feature-flagged (`ACCESS_DENY_NOTIFY_ONCE=false` by default).
+
 ### PR-D (contract tests / anti-regression)
 - Goal: lock key integration contracts from accidental drift.
 - Files:
