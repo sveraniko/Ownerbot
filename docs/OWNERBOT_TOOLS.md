@@ -30,7 +30,8 @@
 ```
 
 ### 2.1 Provenance правило
-Если tool возвращает числовые KPI, `provenance.sources` **обязателен**, иначе `PROVENANCE_MISSING`.
+Если tool возвращает числовые KPI, `provenance.sources` **обязателен**, а также обязателен `provenance.window` и `as_of`.
+При нарушении verifier возвращает `PROVENANCE_MISSING` или `PROVENANCE_INCOMPLETE`.
 
 ## 3) Tools v1
 ### Реализовано (DEMO)
@@ -46,6 +47,8 @@
   - dry_run: preview (`dry_run`, `recipients`, `message_preview`, `note`)
   - commit: `sent`, `failed`, `message` (+ warnings on partial delivery)
   - allowlist: отправка только в `MANAGER_CHAT_IDS` (ENV)
+
+- `retrospective_last` — payload: `limit?` (default=5); output: последние audit события `retrospective` из `ownerbot_audit_events` (read-only).
 
 ### Stub (NOT_IMPLEMENTED)
 - `funnel_snapshot`

@@ -18,10 +18,25 @@ def _has_numeric(value: Any) -> bool:
 def verify_response(response: ToolResponse) -> ToolResponse:
     if response.status == "error":
         return response
-    if _has_numeric(response.data) and not response.provenance.sources:
-        return ToolResponse.error(
-            correlation_id=response.correlation_id,
-            code="PROVENANCE_MISSING",
-            message="Numeric KPI requires provenance sources.",
-        )
+
+    if _has_numeric(response.data):
+        if not response.provenance.sources:
+            return ToolResponse.error(
+                correlation_id=response.correlation_id,
+                code="PROVENANCE_MISSING",
+                message="Numeric KPI requires provenance sources.",
+            )
+        if response.provenance.window is None:
+            return ToolResponse.error(
+                correlation_id=response.correlation_id,
+                code="PROVENANCE_INCOMPLETE",
+                message="Numeric KPI requires provenance window.",
+            )
+        if response.as_of is None:
+            return ToolResponse.error(
+                correlation_id=response.correlation_id,
+                code="PROVENANCE_INCOMPLETE",
+                message="Numeric KPI requires as_of.",
+            )
+
     return response
