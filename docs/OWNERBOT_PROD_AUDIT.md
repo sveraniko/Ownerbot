@@ -147,3 +147,7 @@ Cold-start checks after baseline update:
 - В PR-05B снижена связность роутеров: форматирование вынесено в `app/bot/ui/formatting.py`, запуск tool handlers в `app/bot/services/tool_runner.py`, rule-based intent routing в `app/bot/services/intent_router.py`.
 - Убран cross-router импорт (`actions` больше не импортирует `owner_console`), что уменьшает риск циклических зависимостей и упрощает изолированные тесты.
 - Изменение подготавливает безопасный фундамент для PR-06/07/08 без изменения P0 статусов.
+
+### PR-05E perf hardening
+- ✅ Добавлены baseline индексы для audit/action/demo hot paths без новых миграций.
+- ✅ PR-05E снижает риск деградации производительности таблиц audit/action на production объёмах (фильтры по типу/статусу и сортировка по времени).

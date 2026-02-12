@@ -42,11 +42,15 @@ OwnerBot — отдельный бот/сервис поверх SIS, котор
    - `BOT_TOKEN` — Telegram bot token
    - `OWNER_IDS` — список owner user_id (через запятую)
    - `MANAGER_CHAT_IDS` — список chat_id для notify_team (через запятую)
-3. Запусти:
+3. Если у тебя уже была создана БД и ты подтянул PR-05E (baseline indexes), пересобери volume:
+   ```bash
+   docker compose down -v
+   ```
+4. Запусти:
    ```bash
    docker compose up --build
    ```
-4. Добавь бота в нужные чаты/каналы/группы, иначе Telegram вернёт ошибку отправки.
+5. Добавь бота в нужные чаты/каналы/группы, иначе Telegram вернёт ошибку отправки.
 
 ## Local development
 1. Create venv:
