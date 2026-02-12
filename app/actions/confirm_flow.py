@@ -7,9 +7,13 @@ import uuid
 from app.core.redis import get_redis
 
 
+def compute_payload_hash(payload: dict) -> str:
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
+
+
 async def create_confirm_token(payload: dict, ttl_seconds: int = 300) -> str:
     token = str(uuid.uuid4())
-    payload_hash = hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
+    payload_hash = compute_payload_hash(payload)
     redis_client = await get_redis()
     await redis_client.set(
         f"confirm:{token}",
@@ -25,3 +29,8 @@ async def get_confirm_payload(token: str) -> dict | None:
     if not raw:
         return None
     return json.loads(raw)
+
+
+async def expire_confirm_token(token: str, ttl_seconds: int = 60) -> None:
+    redis_client = await get_redis()
+    await redis_client.expire(f"confirm:{token}", ttl_seconds)

@@ -23,10 +23,10 @@
 ## 2) Risk register
 
 ### P0 (prod/data/access impact)
-1. **Dry-run/action atomicity gap (double-commit race).**
-   - `handle_confirm` checks idempotency and then calls tool handler; uniqueness is enforced by DB, but conflict path is not explicitly handled.
-   - If two confirms race, one may fail on unique key with unhandled DB exception path at callback-level (can surface as 500/update failure).
-   - Evidence: `check_idempotency` + `record_action` split in `app/actions/idempotency.py` and call order in `app/bot/routers/actions.py`.
+1. **Dry-run/action atomicity gap (double-commit race).** ✅ fixed in PR-05A
+   - Fixed by switching to atomic `claim_action` (insert `in_progress` with unique idempotency key) before tool execution, followed by `finalize_action` terminal status update.
+   - Duplicate confirms now resolve deterministically via existing row status (`in_progress` / `committed` / `failed`) without re-running handler.
+   - Confirm token is expired with short TTL (instead of immediate delete) so duplicate callbacks still surface idempotent UX.
 2. **Access gating is owner-only and silent for non-owner traffic.**
    - `OwnerGateMiddleware` drops unauthorized events with `return None`; no alerting/throttling/audit for repeated unauthorized attempts.
    - This is secure by deny-default but weak for diagnostics/forensics.
