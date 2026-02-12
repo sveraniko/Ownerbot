@@ -74,3 +74,8 @@ docker compose run --rm ownerbot_app pytest -q
 - Реализация throttle: Redis-first (`exists`/`setex`), fallback-safe in-memory LRU cache (process-local, max 1000 keys).
 - Флаг `ACCESS_DENY_AUDIT_ENABLED` (default `true`) управляет записью deny-аудита.
 - Флаг `ACCESS_DENY_NOTIFY_ONCE` (default `false`) включает опциональный ответ `Нет доступа.` только в private chat, также throttled по тому же TTL-ключу.
+
+## 9) Database baseline
+- OwnerBot придерживается baseline-only policy: в `app/storage/alembic/versions` хранится ровно одна миграция `0001_baseline.py`.
+- Производственные индексы (audit/action/demo hot paths) добавляются только в baseline, без `0002+` ревизий.
+- После pull изменений baseline (например, PR-05E) локальную БД нужно пересобрать через `docker compose down -v` перед `docker compose up --build`.

@@ -68,8 +68,53 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
 
+    op.create_index(
+        "idx_ownerbot_audit_events_occurred_at",
+        "ownerbot_audit_events",
+        ["occurred_at"],
+    )
+    op.create_index(
+        "idx_ownerbot_audit_events_event_type_occurred_at",
+        "ownerbot_audit_events",
+        ["event_type", "occurred_at"],
+    )
+    op.create_index(
+        "idx_ownerbot_audit_events_correlation_id",
+        "ownerbot_audit_events",
+        ["correlation_id"],
+    )
+
+    op.create_index(
+        "idx_ownerbot_action_log_status_committed_at",
+        "ownerbot_action_log",
+        ["status", "committed_at"],
+    )
+    op.create_index(
+        "idx_ownerbot_action_log_tool_committed_at",
+        "ownerbot_action_log",
+        ["tool", "committed_at"],
+    )
+    op.create_index(
+        "idx_ownerbot_action_log_correlation_id",
+        "ownerbot_action_log",
+        ["correlation_id"],
+    )
+
+    op.create_index(
+        "idx_ownerbot_demo_orders_status_created_at",
+        "ownerbot_demo_orders",
+        ["status", "created_at"],
+    )
+
 
 def downgrade() -> None:
+    op.drop_index("idx_ownerbot_demo_orders_status_created_at", table_name="ownerbot_demo_orders")
+    op.drop_index("idx_ownerbot_action_log_correlation_id", table_name="ownerbot_action_log")
+    op.drop_index("idx_ownerbot_action_log_tool_committed_at", table_name="ownerbot_action_log")
+    op.drop_index("idx_ownerbot_action_log_status_committed_at", table_name="ownerbot_action_log")
+    op.drop_index("idx_ownerbot_audit_events_correlation_id", table_name="ownerbot_audit_events")
+    op.drop_index("idx_ownerbot_audit_events_event_type_occurred_at", table_name="ownerbot_audit_events")
+    op.drop_index("idx_ownerbot_audit_events_occurred_at", table_name="ownerbot_audit_events")
     op.drop_table("ownerbot_demo_chat_threads")
     op.drop_table("ownerbot_demo_kpi_daily")
     op.drop_table("ownerbot_demo_orders")
