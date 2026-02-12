@@ -4,8 +4,8 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.actions.confirm_flow import create_confirm_token, get_confirm_payload
-from app.actions.idempotency import check_idempotency, record_action
+from app.actions.confirm_flow import compute_payload_hash, create_confirm_token, get_confirm_payload
+from app.actions.idempotency import claim_action, finalize_action
 from app.core.redis import get_test_redis
 from app.storage.models import Base, OwnerbotDemoOrder
 from app.tools.contracts import ToolActor
@@ -92,24 +92,72 @@ async def test_confirm_flow_roundtrip(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_idempotency_prevents_double_commit():
+async def test_confirm_payload_hash_matches_compute(monkeypatch):
+    async def _get_redis():
+        return await get_test_redis()
+
+    monkeypatch.setattr("app.actions.confirm_flow.get_redis", _get_redis)
+    payload = {
+        "tool_name": "flag_order",
+        "payload_commit": {"order_id": "OB-1", "dry_run": False},
+        "idempotency_key": "idem-1",
+    }
+
+    token = await create_confirm_token(payload, ttl_seconds=60)
+    stored = await get_confirm_payload(token)
+
+    assert stored is not None
+    assert stored["payload_hash"] == compute_payload_hash(payload)
+
+
+@pytest.mark.asyncio
+async def test_claim_action_prevents_double_commit():
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    async with async_session() as session:
-        await record_action(
-            session,
+
+    async with async_session() as first_session:
+        created, claimed = await claim_action(
+            first_session,
             idempotency_key="idem-1",
             tool="flag_order",
             payload_hash="hash",
+            correlation_id="corr-1",
+        )
+        assert claimed is True
+        assert created is not None
+        assert created.status == "in_progress"
+
+    async with async_session() as second_session:
+        existing, claimed_again = await claim_action(
+            second_session,
+            idempotency_key="idem-1",
+            tool="flag_order",
+            payload_hash="hash",
+            correlation_id="corr-2",
+        )
+        assert claimed_again is False
+        assert existing is not None
+        assert existing.status == "in_progress"
+
+    async with async_session() as finalize_session:
+        await finalize_action(
+            finalize_session,
+            idempotency_key="idem-1",
             status="committed",
-            correlation_id="corr",
+            correlation_id="corr-final",
         )
 
-    async with async_session() as session:
-        existing = await check_idempotency(session, "idem-1")
-
-    assert existing is not None
-    assert existing.status == "committed"
+    async with async_session() as third_session:
+        existing_after_finalize, claimed_third = await claim_action(
+            third_session,
+            idempotency_key="idem-1",
+            tool="flag_order",
+            payload_hash="hash",
+            correlation_id="corr-3",
+        )
+        assert claimed_third is False
+        assert existing_after_finalize is not None
+        assert existing_after_finalize.status == "committed"
