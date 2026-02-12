@@ -18,6 +18,7 @@ from app.bot.keyboards.confirm import confirm_keyboard
 from app.bot.services.intent_router import route_intent
 from app.bot.services.tool_runner import run_tool
 from app.bot.ui.formatting import format_tool_response
+from app.core.contracts import CANCEL_CB_PREFIX, CONFIRM_CB_PREFIX
 from app.core.logging import get_correlation_id
 from app.core.redis import get_redis
 from app.core.settings import get_settings
@@ -110,7 +111,7 @@ async def handle_tool_call(message: Message, text: str) -> None:
         token = await create_confirm_token(confirm_payload)
         await message.answer(
             format_tool_response(response),
-            reply_markup=confirm_keyboard(f"confirm:{token}", f"cancel:{token}"),
+            reply_markup=confirm_keyboard(f"{CONFIRM_CB_PREFIX}{token}", f"{CANCEL_CB_PREFIX}{token}"),
         )
         return
 
