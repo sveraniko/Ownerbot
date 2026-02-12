@@ -91,6 +91,12 @@ OwnerBot — отдельный бот/сервис поверх SIS, котор
 - `SIS_TIMEOUT_SEC` / `SIS_MAX_RETRIES` / `SIS_RETRY_BACKOFF_BASE_SEC` — таймаут/ретраи SIS HTTP.
 - `UPSTREAM_RUNTIME_TOGGLE_ENABLED` — включает runtime override режима.
 - `UPSTREAM_REDIS_KEY` — redis key для runtime upstream mode.
+- `DIAGNOSTICS_ENABLED` — включает `/systems` и диагностики (по умолчанию `true`).
+- `SHADOW_CHECK_ENABLED` — включает `/shadow_check` (по умолчанию `true`).
+- `SIS_CONTRACT_CHECK_ENABLED` — включает лёгкий контракт-чек SIS в `/systems` (по умолчанию `true`).
+- `SIZEBOT_BASE_URL` / `SIZEBOT_API_KEY` — задел для будущего health-check SizeBot.
+- `SIZEBOT_CHECK_ENABLED` — включает заглушку проверки SizeBot (по умолчанию `false`).
+- `SHADOW_AUTO_ON_TOOL_CALLS` — флаг будущей авто-сверки на tool call (по умолчанию `false`).
 - `ASR_PROVIDER` — `mock` (default) или `openai` для реального ASR.
 - `OPENAI_API_KEY` — обязателен при `ASR_PROVIDER=openai`.
 - `OPENAI_ASR_MODEL` — модель распознавания (по умолчанию `gpt-4o-mini-transcribe`).
@@ -131,3 +137,8 @@ OwnerBot — отдельный бот/сервис поверх SIS, котор
 - PNG chart preset for revenue trend: `/trend [N]` (default `14`) and phrases like `график выручки 7 дней`.
 - Weekly DEMO PDF preset: `/weekly_pdf` (aggregates `revenue_trend`, `kpi_snapshot`, `orders_search status=stuck`, `chats_unanswered`).
 - Artifacts are sent directly in Telegram as photo/document while textual tool summary is preserved.
+
+
+## Diagnostics commands
+- `/systems` — owner-only health обзор OwnerBot/SIS/SizeBot (placeholder).
+- `/shadow_check` — owner-only DEMO vs SIS сверка по базовым пресетам (KPI/trend/orders).
