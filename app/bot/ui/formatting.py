@@ -3,11 +3,29 @@ from __future__ import annotations
 from app.tools.contracts import ToolDefinition, ToolResponse
 
 
-def format_tool_response(resp: ToolResponse) -> str:
+SIS_SOURCE_TAG = "SIS(ownerbot/v1)"
+DEMO_SOURCE_TAG = "DEMO"
+
+
+def detect_source_tag(resp: ToolResponse) -> str | None:
+    sources = resp.provenance.sources if resp.provenance else []
+    joined = " ".join(sources).lower()
+    if "ownerbot/v1" in joined or "sis" in joined:
+        return SIS_SOURCE_TAG
+    if "local_demo" in joined or "ownerbot_demo" in joined:
+        return DEMO_SOURCE_TAG
+    return None
+
+
+def format_tool_response(resp: ToolResponse, *, source_tag: str | None = None) -> str:
     if resp.status == "error" and resp.error:
         return f"Ошибка: {resp.error.code}\n{resp.error.message}"
 
-    lines = ["Суть:", "Запрос выполнен."]
+    lines = []
+    resolved_source = source_tag or detect_source_tag(resp)
+    if resolved_source:
+        lines.append(f"Источник: {resolved_source}")
+    lines.extend(["Суть:", "Запрос выполнен."])
     if resp.data:
         lines.append("\nЦифры:")
         for key, value in resp.data.items():
