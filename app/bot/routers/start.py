@@ -45,7 +45,9 @@ async def cmd_help(message: Message) -> None:
         "Примеры фраз:\n"
         "• дай KPI за вчера\n"
         "• что с заказами, что зависло\n"
-        "• покажи последние 7 дней выручку\n"
+        "• /trend 14\n"
+        "• график выручки 7 дней\n"
+        "• /weekly_pdf\n"
         "• флагни заказ OB-1003 причина тест\n"
     )
     await message.answer(text)

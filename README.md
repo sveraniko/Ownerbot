@@ -114,3 +114,9 @@ OwnerBot — отдельный бот/сервис поверх SIS, котор
 - Tech base: **docs/OWNERBOT_TECH_BASE.md**
 - Tools contract: **docs/OWNERBOT_TOOLS.md**
 - Shared contracts: **docs/SHARED_CONTRACTS.md**
+
+
+## Artifacts (PR-06)
+- PNG chart preset for revenue trend: `/trend [N]` (default `14`) and phrases like `график выручки 7 дней`.
+- Weekly DEMO PDF preset: `/weekly_pdf` (aggregates `revenue_trend`, `kpi_snapshot`, `orders_search status=stuck`, `chats_unanswered`).
+- Artifacts are sent directly in Telegram as photo/document while textual tool summary is preserved.
