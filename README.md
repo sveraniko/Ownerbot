@@ -85,7 +85,12 @@ OwnerBot — отдельный бот/сервис поверх SIS, котор
 - `OWNER_IDS` — owner allowlist.
 - `DATABASE_URL` — Postgres для OwnerBot.
 - `REDIS_URL` — Redis для OwnerBot.
-- `UPSTREAM_MODE` — `DEMO` (по умолчанию), `SIS_HTTP` (позже), `SIS_DB_RO` (позже).
+- `UPSTREAM_MODE` — `DEMO` (по умолчанию), `SIS_HTTP`, `AUTO`.
+- `SIS_BASE_URL` — базовый URL SIS ownerbot gateway.
+- `SIS_OWNERBOT_API_KEY` — API ключ заголовка `X-API-Key`.
+- `SIS_TIMEOUT_SEC` / `SIS_MAX_RETRIES` / `SIS_RETRY_BACKOFF_BASE_SEC` — таймаут/ретраи SIS HTTP.
+- `UPSTREAM_RUNTIME_TOGGLE_ENABLED` — включает runtime override режима.
+- `UPSTREAM_REDIS_KEY` — redis key для runtime upstream mode.
 - `ASR_PROVIDER` — `mock` (default) или `openai` для реального ASR.
 - `OPENAI_API_KEY` — обязателен при `ASR_PROVIDER=openai`.
 - `OPENAI_ASR_MODEL` — модель распознавания (по умолчанию `gpt-4o-mini-transcribe`).
@@ -111,7 +116,8 @@ OwnerBot — отдельный бот/сервис поверх SIS, котор
 ## DEMO mode
 - По умолчанию `UPSTREAM_MODE=DEMO`.
 - OwnerBot использует локальные demo таблицы, seeds при старте.
-- Если настроить `UPSTREAM_MODE` на SIS-режим — при недоступности upstream вернётся ошибка `UPSTREAM_UNAVAILABLE`.
+- В `AUTO` режиме OwnerBot делает ping SIS и переключается на DEMO при недоступности upstream.
+- Runtime toggle команды (owner-only): `/upstream`, `/upstream_demo`, `/upstream_sis`, `/upstream_auto`, `/sis_check`.
 
 ## Quick links
 - Entry point: **AGENTS.md**

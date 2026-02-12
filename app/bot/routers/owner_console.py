@@ -18,7 +18,7 @@ from app.bot.keyboards.confirm import confirm_keyboard
 from app.bot.services.intent_router import route_intent
 from app.bot.services.retrospective import write_retrospective_event
 from app.bot.services.tool_runner import run_tool
-from app.bot.ui.formatting import format_tool_response
+from app.bot.ui.formatting import detect_source_tag, format_tool_response
 from app.core.contracts import CANCEL_CB_PREFIX, CONFIRM_CB_PREFIX
 from app.core.logging import get_correlation_id
 from app.core.redis import get_redis
@@ -28,8 +28,10 @@ from app.reports.charts import render_revenue_trend_png
 from app.reports.pdf_weekly import build_weekly_report_pdf
 from app.llm.router import llm_plan_intent
 from app.tools.contracts import ToolActor, ToolProvenance, ToolResponse, ToolTenant
-from app.tools.providers.sis_gateway import upstream_unavailable
+from app.tools.providers.sis_gateway import run_sis_tool, upstream_unavailable
 from app.tools.registry_setup import build_registry
+from app.upstream.selector import choose_data_mode, resolve_effective_mode
+from app.upstream.sis_client import SisClient
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -257,21 +259,9 @@ async def handle_tool_call(message: Message, text: str, *, input_kind: str = "te
         )
         return
 
-    if settings.upstream_mode != "DEMO":
-        correlation_id = get_correlation_id()
-        response = upstream_unavailable(correlation_id)
-        await message.answer(format_tool_response(response))
-        await write_retrospective_event(
-            correlation_id=correlation_id,
-            input_kind=input_kind,
-            text=text,
-            intent_source=intent_source,
-            llm_confidence=llm_confidence,
-            tool_name=intent.tool,
-            response=response,
-            artifacts=[],
-        )
-        return
+
+    redis = await get_redis()
+    effective_mode, _runtime_override = await resolve_effective_mode(settings=settings, redis=redis)
 
     tool = registry.get(intent.tool)
     if tool is None:
@@ -291,7 +281,7 @@ async def handle_tool_call(message: Message, text: str, *, input_kind: str = "te
             correlation_id=correlation_id,
             registry=registry,
         )
-        await message.answer(format_tool_response(response))
+        await message.answer(format_tool_response(response, source_tag=source_tag if "source_tag" in locals() else None))
         await write_retrospective_event(
             correlation_id=correlation_id,
             input_kind=input_kind,
@@ -338,16 +328,58 @@ async def handle_tool_call(message: Message, text: str, *, input_kind: str = "te
         return
 
     start = time.perf_counter()
-    response = await run_tool(
-        intent.tool,
-        intent.payload,
-        message=message,
-        actor=actor,
-        tenant=tenant,
-        correlation_id=correlation_id,
-        idempotency_key=idempotency_key,
-        registry=registry,
-    )
+    if is_action:
+        response = await run_tool(
+            intent.tool,
+            intent.payload,
+            message=message,
+            actor=actor,
+            tenant=tenant,
+            correlation_id=correlation_id,
+            idempotency_key=idempotency_key,
+            registry=registry,
+        )
+        source_tag = detect_source_tag(response)
+    else:
+        selected_mode, _ping_response = await choose_data_mode(
+            effective_mode=effective_mode,
+            redis=redis,
+            correlation_id=correlation_id,
+            ping_callable=lambda: SisClient(settings).ping(correlation_id=correlation_id),
+        )
+        if selected_mode == "SIS_HTTP":
+            response = await run_sis_tool(
+                tool_name=intent.tool, payload=intent.payload, correlation_id=correlation_id, settings=settings
+            )
+            if response.status == "error" and response.error and response.error.code == "NOT_IMPLEMENTED":
+                response = await run_tool(
+                    intent.tool,
+                    intent.payload,
+                    message=message,
+                    actor=actor,
+                    tenant=tenant,
+                    correlation_id=correlation_id,
+                    idempotency_key=idempotency_key,
+                    registry=registry,
+                )
+                source_tag = "DEMO"
+            else:
+                source_tag = "SIS(ownerbot/v1)"
+        elif selected_mode == "DEMO":
+            response = await run_tool(
+                intent.tool,
+                intent.payload,
+                message=message,
+                actor=actor,
+                tenant=tenant,
+                correlation_id=correlation_id,
+                idempotency_key=idempotency_key,
+                registry=registry,
+            )
+            source_tag = "DEMO"
+        else:
+            response = upstream_unavailable(correlation_id)
+            source_tag = None
 
     latency_ms = int((time.perf_counter() - start) * 1000)
     logger.info("tool_call", extra={"tool": intent.tool, "latency_ms": latency_ms, "status": response.status})
@@ -366,7 +398,7 @@ async def handle_tool_call(message: Message, text: str, *, input_kind: str = "te
         )
         await message.answer_photo(
             BufferedInputFile(png_bytes, filename=f"revenue_trend_{days}d.png"),
-            caption=_build_trend_caption(response.data, tenant.currency),
+            caption=f"Источник: {source_tag or 'DEMO'}\n" + _build_trend_caption(response.data, tenant.currency),
         )
         artifacts.append("chart_png")
         await write_audit_event(
@@ -376,7 +408,7 @@ async def handle_tool_call(message: Message, text: str, *, input_kind: str = "te
 
     if is_action and intent.payload.get("dry_run", False):
         if response.status == "error":
-            await message.answer(format_tool_response(response))
+            await message.answer(format_tool_response(response, source_tag=source_tag if "source_tag" in locals() else None))
             await write_retrospective_event(
                 correlation_id=correlation_id,
                 input_kind=input_kind,
@@ -398,7 +430,7 @@ async def handle_tool_call(message: Message, text: str, *, input_kind: str = "te
         }
         token = await create_confirm_token(confirm_payload)
         await message.answer(
-            format_tool_response(response),
+            format_tool_response(response, source_tag=source_tag if "source_tag" in locals() else None),
             reply_markup=confirm_keyboard(f"{CONFIRM_CB_PREFIX}{token}", f"{CANCEL_CB_PREFIX}{token}"),
         )
         await write_retrospective_event(
@@ -413,7 +445,7 @@ async def handle_tool_call(message: Message, text: str, *, input_kind: str = "te
         )
         return
 
-    await message.answer(format_tool_response(response))
+    await message.answer(format_tool_response(response, source_tag=source_tag if "source_tag" in locals() else None))
     await write_retrospective_event(
         correlation_id=correlation_id,
         input_kind=input_kind,
