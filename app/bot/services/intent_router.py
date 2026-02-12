@@ -9,6 +9,7 @@ from datetime import date, timedelta
 class IntentResult:
     tool: str | None
     payload: dict
+    presentation: dict | None = None
     error_message: str | None = None
 
 
@@ -36,6 +37,22 @@ def extract_reason_after_keywords(text: str, keywords: list[str] | None = None) 
 
 def route_intent(text: str) -> IntentResult:
     normalized = text.lower().strip()
+
+    trend_command_match = re.match(r"^/trend(?:@\w+)?(?:\s+(\d{1,2}))?\s*$", text.strip(), flags=re.IGNORECASE)
+    if trend_command_match:
+        raw_days = trend_command_match.group(1)
+        days = int(raw_days) if raw_days else 14
+        if 1 <= days <= 60:
+            return IntentResult(
+                tool="revenue_trend",
+                payload={"days": days},
+                presentation={"kind": "chart_png", "days": days},
+            )
+        return IntentResult(tool=None, payload={}, error_message="/trend: укажи число дней от 1 до 60.")
+
+    weekly_pdf_command_match = re.match(r"^/weekly_pdf(?:@\w+)?\s*$", text.strip(), flags=re.IGNORECASE)
+    if weekly_pdf_command_match:
+        return IntentResult(tool="kpi_snapshot", payload={}, presentation={"kind": "weekly_pdf"})
 
     # 1) notify_team
     if normalized.startswith("/notify"):
@@ -70,8 +87,16 @@ def route_intent(text: str) -> IntentResult:
 
     # 4) revenue_trend
     days = extract_days(text)
-    if days and any(word in normalized for word in ["выруч", "продаж"]):
-        return IntentResult(tool="revenue_trend", payload={"days": days})
+    trend_phrases = ["график выручки", "график продаж", "покажи график продаж", "покажи график выручки"]
+    if days and (
+        any(phrase in normalized for phrase in trend_phrases)
+        or ("график" in normalized and any(word in normalized for word in ["выруч", "продаж"]))
+    ):
+        return IntentResult(
+            tool="revenue_trend",
+            payload={"days": days},
+            presentation={"kind": "chart_png", "days": days},
+        )
 
     # 5) chats_unanswered
     if any(word in normalized for word in ["чаты", "чат", "без ответа", "не отвечено", "не отвеч"]):

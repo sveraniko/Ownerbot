@@ -9,3 +9,5 @@ httpx==0.26.0
 pytest==8.0.2
 pytest-asyncio==0.23.5
 aiosqlite==0.20.0
+matplotlib==3.10.8
+reportlab==4.4.10

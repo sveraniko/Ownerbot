@@ -56,3 +56,10 @@
 - `create_coupon` (action, поддерживает dry_run payload)
 - `adjust_price` (action)
 - `pause_campaign` (action)
+
+
+## 4) Artifact presets (DEMO, no LLM orchestration)
+- `/trend [N]` -> executes `revenue_trend` and renders PNG chart artifact (`chart_png`) + regular text summary.
+- Phrase intents: `график выручки N дней`, `покажи график продаж N дней` map to the same `revenue_trend` + PNG presentation.
+- `/weekly_pdf` -> preset workflow over existing tools: `revenue_trend(days=7)`, `kpi_snapshot`, `orders_search(status=stuck,limit=10)`, `chats_unanswered(limit=10)` and renders text-only PDF artifact (`weekly_pdf`).
+- Artifact generation writes audit event `artifact_generated` with `correlation_id`.
