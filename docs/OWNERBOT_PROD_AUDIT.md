@@ -136,3 +136,8 @@ Cold-start checks after baseline update:
 - `rg -n "confirm:|cancel:" app tests`
 - `rg -n "from app\.bot\.routers\.owner_console import format_response" app`
 - `wc -l app/bot/routers/*.py`
+
+## 6) PR-05B boundary hardening note
+- В PR-05B снижена связность роутеров: форматирование вынесено в `app/bot/ui/formatting.py`, запуск tool handlers в `app/bot/services/tool_runner.py`, rule-based intent routing в `app/bot/services/intent_router.py`.
+- Убран cross-router импорт (`actions` больше не импортирует `owner_console`), что уменьшает риск циклических зависимостей и упрощает изолированные тесты.
+- Изменение подготавливает безопасный фундамент для PR-06/07/08 без изменения P0 статусов.

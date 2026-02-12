@@ -1,40 +1,31 @@
 from __future__ import annotations
 
-import inspect
+from contextlib import asynccontextmanager
 
 from aiogram import F, Router
 from aiogram.types import CallbackQuery
 
 from app.actions.confirm_flow import compute_payload_hash, expire_confirm_token, get_confirm_payload
 from app.actions.idempotency import claim_action, finalize_action
-from app.bot.routers.owner_console import format_response
+from app.bot.services.tool_runner import run_tool
+from app.bot.ui.formatting import format_tool_response
 from app.core.db import session_scope
 from app.core.logging import get_correlation_id
 from app.core.redis import get_redis
 from app.storage.bootstrap import write_audit_event
-from app.tools.contracts import ToolActor, ToolResponse
+from app.tools.contracts import ToolActor, ToolResponse, ToolTenant
 from app.tools.registry_setup import build_registry
-from app.tools.verifier import verify_response
 
 router = Router()
 registry = build_registry()
 
 
-async def call_tool_handler(
-    tool,
-    payload,
-    correlation_id: str,
-    session,
-    actor: ToolActor,
-    bot=None,
-) -> ToolResponse:
-    params = inspect.signature(tool.handler).parameters
-    kwargs = {}
-    if "actor" in params:
-        kwargs["actor"] = actor
-    if "bot" in params:
-        kwargs["bot"] = bot
-    return await tool.handler(payload, correlation_id, session, **kwargs)
+def _reuse_session_factory(session):
+    @asynccontextmanager
+    async def _scope():
+        yield session
+
+    return _scope
 
 
 @router.callback_query(F.data.startswith("confirm:"))
@@ -88,6 +79,13 @@ async def handle_confirm(callback_query: CallbackQuery) -> None:
 
     correlation_id = get_correlation_id()
     actor = ToolActor(owner_user_id=owner_user_id)
+    tenant = ToolTenant(
+        project="OwnerBot",
+        shop_id="shop_001",
+        currency="EUR",
+        timezone="Europe/Berlin",
+        locale="ru-RU",
+    )
 
     async with session_scope() as session:
         existing, claimed = await claim_action(
@@ -117,11 +115,17 @@ async def handle_confirm(callback_query: CallbackQuery) -> None:
             return
 
         try:
-            payload_model = tool.payload_model(**payload_commit)
-            response = await call_tool_handler(
-                tool, payload_model, correlation_id, session, actor, bot=callback_query.bot
+            response = await run_tool(
+                tool_name,
+                payload_commit,
+                callback_query=callback_query,
+                actor=actor,
+                tenant=tenant,
+                correlation_id=correlation_id,
+                idempotency_key=idempotency_key,
+                session_factory=_reuse_session_factory(session),
+                registry=registry,
             )
-            response = verify_response(response)
             status = "committed" if response.status == "ok" else "failed"
         except Exception as exc:
             status = "failed"
@@ -156,7 +160,7 @@ async def handle_confirm(callback_query: CallbackQuery) -> None:
         },
     )
 
-    await callback_query.message.edit_text(format_response(response))
+    await callback_query.message.edit_text(format_tool_response(response))
     await callback_query.answer()
     await expire_confirm_token(token, 60)
 

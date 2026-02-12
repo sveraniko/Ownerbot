@@ -55,3 +55,9 @@ pytest -q
 ```bash
 docker compose run --rm ownerbot_app pytest -q
 ```
+
+## 6) Boundaries & Modules
+- **Routers (`app/bot/routers/*`)**: только Telegram wiring (входящие update/callback, reply/edit, keyboard) и делегирование в сервисы.
+- **Services (`app/bot/services/*`)**: прикладная логика роутинга интентов и запуска tools (`intent_router`, `tool_runner`).
+- **UI (`app/bot/ui/*`)**: чистое форматирование текстов ответов без Telegram API вызовов.
+- Правило: **No cross-router imports**. Роутеры не импортируют друг друга; общие функции выносятся в `services`/`ui`.
