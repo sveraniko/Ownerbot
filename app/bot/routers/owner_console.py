@@ -1,16 +1,13 @@
 from __future__ import annotations
 
-import inspect
 import logging
 import re
 import time
 import uuid
-from datetime import date, timedelta
 
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import Message
-from pydantic import ValidationError
 
 from app.actions.confirm_flow import create_confirm_token
 from app.asr.cache import get_or_transcribe
@@ -18,178 +15,91 @@ from app.asr.errors import ASRError
 from app.asr.factory import get_asr_provider
 from app.asr.telegram_voice import download_voice_bytes
 from app.bot.keyboards.confirm import confirm_keyboard
+from app.bot.services.intent_router import route_intent
+from app.bot.services.tool_runner import run_tool
+from app.bot.ui.formatting import format_tool_response
 from app.core.logging import get_correlation_id
 from app.core.redis import get_redis
 from app.core.settings import get_settings
-from app.core.db import session_scope
 from app.storage.bootstrap import write_audit_event
-from app.tools.contracts import ToolActor, ToolRequest, ToolResponse, ToolTenant
+from app.tools.contracts import ToolActor, ToolTenant
 from app.tools.providers.sis_gateway import upstream_unavailable
 from app.tools.registry_setup import build_registry
-from app.tools.verifier import verify_response
 
 router = Router()
 logger = logging.getLogger(__name__)
 registry = build_registry()
 
 
-def intent_from_text(text: str) -> tuple[str | None, dict]:
-    normalized = text.lower().strip()
-    if normalized.startswith("/notify"):
-        notify_message = re.sub(r"^/notify(?:@\w+)?\s*", "", text, flags=re.IGNORECASE).strip()
-        return "notify_team", {"message": notify_message}
-
-    notify_phrases = ["уведомь команду", "сообщи менеджеру", "пни менеджера"]
-    for phrase in notify_phrases:
-        index = normalized.find(phrase)
-        if index != -1:
-            message = text[index + len(phrase) :].strip()
-            message = message.lstrip(" -—:\t").strip()
-            return "notify_team", {"message": message}
-    flag_keywords = ["флаг", "пометь", "отметь", "flag"]
-    flag_order_match = re.search(r"\bob-\d+\b", text, flags=re.IGNORECASE)
-    if flag_order_match and any(word in normalized for word in flag_keywords):
-        reason = ""
-        reason_match = re.search(r"\bпричина\b\s*(.+)", text, flags=re.IGNORECASE)
-        if reason_match:
-            reason = reason_match.group(1).strip()
-        else:
-            reason = text[flag_order_match.end() :].strip()
-            reason = reason.lstrip(" -—:\t").strip()
-        payload = {"order_id": flag_order_match.group(0).upper()}
-        if reason:
-            payload["reason"] = reason
-        return "flag_order", payload
-    trend_match = re.search(r"(\d{1,2})\s*(?:дней|дня|дн)", normalized)
-    if trend_match and any(word in normalized for word in ["выруч", "продаж"]):
-        days = int(trend_match.group(1))
-        if 1 <= days <= 60:
-            return "revenue_trend", {"days": days}
-    order_match = re.search(r"\b(?:заказ|order)\s*(ob-\d+)\b", text, flags=re.IGNORECASE)
-    if order_match:
-        return "order_detail", {"order_id": order_match.group(1).upper()}
-    if any(word in normalized for word in ["чаты", "чат", "без ответа", "не отвеч"]):
-        return "chats_unanswered", {}
-    if any(word in normalized for word in ["kpi", "выруч", "продаж"]):
-        payload: dict = {}
-        if "вчера" in normalized:
-            payload["day"] = (date.today() - timedelta(days=1)).isoformat()
-        return "kpi_snapshot", payload
-    if any(word in normalized for word in ["заказ", "завис", "неоплач"]):
-        payload = {}
-        if "завис" in normalized or "неоплач" in normalized:
-            payload["status"] = "stuck"
-        return "orders_search", payload
-    return None, {}
-
-
-def format_response(response: ToolResponse) -> str:
-    if response.status == "error" and response.error:
-        return f"Ошибка: {response.error.code}\n{response.error.message}"
-    lines = ["Суть:", "Запрос выполнен."]
-    if response.data:
-        lines.append("\nЦифры:")
-        for key, value in response.data.items():
-            lines.append(f"• {key}: {value}")
-    if response.provenance:
-        lines.append("\nProvenance:")
-        if response.provenance.sources:
-            for source in response.provenance.sources:
-                lines.append(f"• {source}")
-        else:
-            lines.append("• (none)")
-    if response.warnings:
-        lines.append("\nWarnings:")
-        for warning in response.warnings:
-            lines.append(f"• {warning.code}: {warning.message}")
-    return "\n".join(lines)
-
-
-async def call_tool_handler(
-    tool,
-    payload,
-    correlation_id: str,
-    session,
-    actor: ToolActor,
-    bot=None,
-) -> ToolResponse:
-    params = inspect.signature(tool.handler).parameters
-    kwargs = {}
-    if "actor" in params:
-        kwargs["actor"] = actor
-    if "bot" in params:
-        kwargs["bot"] = bot
-    return await tool.handler(payload, correlation_id, session, **kwargs)
-
-
 async def handle_tool_call(message: Message, text: str) -> None:
     settings = get_settings()
-    tool_name, payload_data = intent_from_text(text)
-    if tool_name is None:
-        await message.answer("Не понял запрос. Попробуй /help.")
+    intent = route_intent(text)
+    if intent.tool is None:
+        await message.answer(intent.error_message or "Не понял запрос. /help")
         return
 
     if settings.upstream_mode != "DEMO":
         response = upstream_unavailable(get_correlation_id())
-        await message.answer(format_response(response))
+        await message.answer(format_tool_response(response))
         return
 
-    tool = registry.get(tool_name)
+    tool = registry.get(intent.tool)
     if tool is None:
-        response = ToolResponse.error(
+        response = await run_tool(
+            intent.tool,
+            intent.payload,
+            message=message,
+            actor=ToolActor(owner_user_id=message.from_user.id),
+            tenant=ToolTenant(
+                project="OwnerBot",
+                shop_id="shop_001",
+                currency="EUR",
+                timezone="Europe/Berlin",
+                locale="ru-RU",
+            ),
             correlation_id=get_correlation_id(),
-            code="NOT_IMPLEMENTED",
-            message=f"Tool {tool_name} is not registered.",
+            registry=registry,
         )
-        await message.answer(format_response(response))
+        await message.answer(format_tool_response(response))
         return
 
-    try:
-        payload = tool.payload_model(**payload_data)
-    except ValidationError:
-        response = ToolResponse.error(
-            correlation_id=get_correlation_id(),
-            code="MESSAGE_REQUIRED" if tool_name == "notify_team" else "VALIDATION_ERROR",
-            message="Нужен текст уведомления." if tool_name == "notify_team" else "Некорректные данные.",
-        )
-        await message.answer(format_response(response))
-        return
     is_action = tool.kind == "action"
     idempotency_key = str(uuid.uuid4()) if is_action else get_correlation_id()
-    tool_request = ToolRequest(
-        tool=tool.name,
-        correlation_id=get_correlation_id(),
-        idempotency_key=idempotency_key,
-        actor=ToolActor(owner_user_id=message.from_user.id),
-        tenant=ToolTenant(
-            project="OwnerBot",
-            shop_id="shop_001",
-            currency="EUR",
-            timezone="Europe/Berlin",
-            locale="ru-RU",
-        ),
-        payload=payload.model_dump(),
+    correlation_id = get_correlation_id()
+    actor = ToolActor(owner_user_id=message.from_user.id)
+    tenant = ToolTenant(
+        project="OwnerBot",
+        shop_id="shop_001",
+        currency="EUR",
+        timezone="Europe/Berlin",
+        locale="ru-RU",
     )
 
-    await write_audit_event("user_message_received", {"text": text, "tool": tool_name})
+    await write_audit_event("user_message_received", {"text": text, "tool": intent.tool})
 
     start = time.perf_counter()
-    async with session_scope() as session:
-        response = await call_tool_handler(
-            tool, payload, tool_request.correlation_id, session, tool_request.actor, bot=message.bot
-        )
-    response = verify_response(response)
+    response = await run_tool(
+        intent.tool,
+        intent.payload,
+        message=message,
+        actor=actor,
+        tenant=tenant,
+        correlation_id=correlation_id,
+        idempotency_key=idempotency_key,
+        registry=registry,
+    )
+
     latency_ms = int((time.perf_counter() - start) * 1000)
-    logger.info("tool_call", extra={"tool": tool_name, "latency_ms": latency_ms, "status": response.status})
+    logger.info("tool_call", extra={"tool": intent.tool, "latency_ms": latency_ms, "status": response.status})
 
-    await write_audit_event("tool_called", {"tool": tool_name})
-    await write_audit_event("tool_result", {"tool": tool_name, "status": response.status})
+    await write_audit_event("tool_called", {"tool": intent.tool})
+    await write_audit_event("tool_result", {"tool": intent.tool, "status": response.status})
 
-    if is_action and getattr(payload, "dry_run", False):
+    if is_action and intent.payload.get("dry_run", False):
         if response.status == "error":
-            await message.answer(format_response(response))
+            await message.answer(format_tool_response(response))
             return
-        payload_commit = payload.model_dump()
+        payload_commit = dict(intent.payload)
         payload_commit["dry_run"] = False
         confirm_payload = {
             "tool_name": tool.name,
@@ -199,12 +109,12 @@ async def handle_tool_call(message: Message, text: str) -> None:
         }
         token = await create_confirm_token(confirm_payload)
         await message.answer(
-            format_response(response),
+            format_tool_response(response),
             reply_markup=confirm_keyboard(f"confirm:{token}", f"cancel:{token}"),
         )
         return
 
-    await message.answer(format_response(response))
+    await message.answer(format_tool_response(response))
 
 
 @router.message(Command("flag"))

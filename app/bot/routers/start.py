@@ -4,6 +4,7 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
+from app.bot.ui.formatting import format_start_message, format_tools_list
 from app.core.db import check_db
 from app.core.redis import check_redis
 from app.core.settings import get_settings
@@ -27,19 +28,13 @@ async def cmd_start(message: Message) -> None:
     except Exception:
         redis_ok = False
 
-    text = (
-        "OwnerBot online.\n\n"
-        f"DB: {'ok' if db_ok else 'fail'}\n"
-        f"Redis: {'ok' if redis_ok else 'fail'}\n"
-        f"Owner IDs: {', '.join(str(x) for x in settings.owner_ids) or 'none'}\n"
-        f"Mode: {settings.upstream_mode}\n\n"
-        "Примеры:\n"
-        "• дай KPI за вчера\n"
-        "• что с заказами, что зависло\n"
-        "• покажи последние 7 дней выручку\n"
-        "• флагни заказ OB-1003 причина тест\n"
-        "• /notify Проверь зависшие заказы и ответь клиентам\n"
-        "• уведомь команду: проверь OB-1003, завис\n"
+    text = format_start_message(
+        {
+            "db_ok": db_ok,
+            "redis_ok": redis_ok,
+            "owner_ids_text": ", ".join(str(x) for x in settings.owner_ids) or "none",
+            "mode": settings.upstream_mode,
+        }
     )
     await message.answer(text)
 
@@ -58,9 +53,4 @@ async def cmd_help(message: Message) -> None:
 
 @router.message(Command("tools"))
 async def cmd_tools(message: Message) -> None:
-    tools = registry.list_tools()
-    lines = ["Tools:"]
-    for tool in tools:
-        status = "stub" if tool["is_stub"] else "ok"
-        lines.append(f"• {tool['name']} v{tool['version']} ({status})")
-    await message.answer("\n".join(lines))
+    await message.answer(format_tools_list(registry.list_definitions()))

@@ -51,3 +51,6 @@ class ToolRegistry:
             }
             for tool in self._tools.values()
         ]
+
+    def list_definitions(self) -> List[ToolDefinition]:
+        return list(self._tools.values())

@@ -1,5 +1,3 @@
-import sys
-import types
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, call
 
@@ -88,33 +86,8 @@ async def test_notify_team_partial_delivery_warning(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_call_tool_handler_passes_bot_when_needed() -> None:
-    aiogram_module = types.ModuleType("aiogram")
-
-    class DummyRouter:
-        def message(self, *args, **kwargs):
-            def decorator(func):
-                return func
-
-            return decorator
-
-        def callback_query(self, *args, **kwargs):
-            def decorator(func):
-                return func
-
-            return decorator
-
-    aiogram_module.F = SimpleNamespace(text=object(), voice=object())
-    aiogram_module.Router = DummyRouter
-    aiogram_filters = types.ModuleType("aiogram.filters")
-    aiogram_filters.Command = lambda *args, **kwargs: object()
-    aiogram_types = types.ModuleType("aiogram.types")
-    aiogram_types.Message = object
-    sys.modules.setdefault("aiogram", aiogram_module)
-    sys.modules.setdefault("aiogram.filters", aiogram_filters)
-    sys.modules.setdefault("aiogram.types", aiogram_types)
-
-    from app.bot.routers.owner_console import call_tool_handler
+async def test_run_tool_passes_bot_when_needed() -> None:
+    from app.bot.services.tool_runner import run_tool
 
     received = {}
     bot_marker = object()
@@ -127,15 +100,30 @@ async def test_call_tool_handler_passes_bot_when_needed() -> None:
             provenance=ToolProvenance(sources=["local"]),
         )
 
-    tool = SimpleNamespace(handler=handler)
+    class DummyPayload:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
 
-    response = await call_tool_handler(
-        tool,
-        payload=None,
-        correlation_id="corr-5",
-        session=None,
+    tool = SimpleNamespace(name="dummy", payload_model=DummyPayload, handler=handler)
+    registry = SimpleNamespace(get=lambda _: tool)
+
+    class DummyScope:
+        async def __aenter__(self):
+            return None
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    message = SimpleNamespace(bot=bot_marker)
+    response = await run_tool(
+        "dummy",
+        {},
+        message=message,
         actor=ToolActor(owner_user_id=1),
-        bot=bot_marker,
+        tenant=SimpleNamespace(),
+        correlation_id="corr-5",
+        session_factory=lambda: DummyScope(),
+        registry=registry,
     )
 
     assert response.status == "ok"
