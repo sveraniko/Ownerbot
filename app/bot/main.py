@@ -7,7 +7,7 @@ from aiogram import Bot, Dispatcher
 
 from app.bot.middlewares.correlation import CorrelationMiddleware
 from app.bot.middlewares.owner_gate import OwnerGateMiddleware
-from app.bot.routers import actions, owner_console, start, upstream_control
+from app.bot.routers import actions, diagnostics, owner_console, start, upstream_control
 from app.core.logging import configure_logging
 from app.core.settings import get_settings
 from app.storage.bootstrap import run_migrations, seed_demo_data
@@ -24,6 +24,7 @@ def build_dispatcher() -> Dispatcher:
     dispatcher.include_router(start.router)
     dispatcher.include_router(owner_console.router)
     dispatcher.include_router(upstream_control.router)
+    dispatcher.include_router(diagnostics.router)
     dispatcher.include_router(actions.router)
     return dispatcher
 

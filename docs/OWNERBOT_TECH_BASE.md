@@ -86,3 +86,11 @@ docker compose run --rm ownerbot_app pytest -q
 - Voice pipeline пишет `asr_started` / `asr_finished` / `asr_failed` с provider и latency.
 - После каждого обработанного запроса пишется `retrospective` в `ownerbot_audit_events` c input_kind, intent_source (RULE/LLM), confidence score и artifacts.
 - Модуль `app/quality/confidence.py` фиксирует расчёт `data_confidence` и `decision_confidence`.
+
+
+## 11) Diagnostics (PR-09)
+- Добавлены owner-only команды `/systems` и `/shadow_check` через `app/bot/routers/diagnostics.py`.
+- Сервис диагностики расположен в `app/diagnostics/systems.py` (systems health + shadow check orchestration).
+- Нормализация/дифф вынесены в `app/diagnostics/diff.py`: округление чисел, игнор `as_of`/`filters_hash`, compact diff top-N.
+- Аудит-события: `systems_check_started/finished`, `shadow_check_started/finished`, `shadow_mismatch`.
+- SizeBot интеграция пока не реализована: только config-gated placeholder статус.
