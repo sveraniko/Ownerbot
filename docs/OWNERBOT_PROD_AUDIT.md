@@ -101,6 +101,7 @@
 - ✅ Default deny UX remains silent; optional notify-once in private chat is feature-flagged (`ACCESS_DENY_NOTIFY_ONCE=false` by default).
 
 ### PR-D (contract tests / anti-regression)
+- PR-05D lock-in: baseline-only policy, callback prefixes, registry contracts, no cross-router imports, and critical `ENV.example` keys are covered by static contract tests.
 - Goal: lock key integration contracts from accidental drift.
 - Files:
   - `tests/test_callback_contracts.py` (new)

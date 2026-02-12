@@ -9,6 +9,7 @@ from app.actions.confirm_flow import compute_payload_hash, expire_confirm_token,
 from app.actions.idempotency import claim_action, finalize_action
 from app.bot.services.tool_runner import run_tool
 from app.bot.ui.formatting import format_tool_response
+from app.core.contracts import CANCEL_CB_PREFIX, CONFIRM_CB_PREFIX, CONFIRM_TOKEN_RETAIN_TTL_SEC_DEFAULT
 from app.core.db import session_scope
 from app.core.logging import get_correlation_id
 from app.core.redis import get_redis
@@ -28,11 +29,11 @@ def _reuse_session_factory(session):
     return _scope
 
 
-@router.callback_query(F.data.startswith("confirm:"))
+@router.callback_query(F.data.startswith(CONFIRM_CB_PREFIX))
 async def handle_confirm(callback_query: CallbackQuery) -> None:
     if callback_query.data is None:
         return
-    token = callback_query.data.split("confirm:", 1)[1]
+    token = callback_query.data.split(CONFIRM_CB_PREFIX, 1)[1]
     stored = await get_confirm_payload(token)
     if stored is None:
         await callback_query.message.edit_text("Подтверждение истекло. Запусти действие снова.")
@@ -111,7 +112,7 @@ async def handle_confirm(callback_query: CallbackQuery) -> None:
                     "Предыдущая попытка завершилась ошибкой. Запусти действие снова."
                 )
             await callback_query.answer()
-            await expire_confirm_token(token, 60)
+            await expire_confirm_token(token, CONFIRM_TOKEN_RETAIN_TTL_SEC_DEFAULT)
             return
 
         try:
@@ -162,15 +163,15 @@ async def handle_confirm(callback_query: CallbackQuery) -> None:
 
     await callback_query.message.edit_text(format_tool_response(response))
     await callback_query.answer()
-    await expire_confirm_token(token, 60)
+    await expire_confirm_token(token, CONFIRM_TOKEN_RETAIN_TTL_SEC_DEFAULT)
 
 
-@router.callback_query(F.data.startswith("cancel:"))
+@router.callback_query(F.data.startswith(CANCEL_CB_PREFIX))
 async def handle_cancel(callback_query: CallbackQuery) -> None:
     if callback_query.data is None:
         return
-    token = callback_query.data.split("cancel:", 1)[1]
+    token = callback_query.data.split(CANCEL_CB_PREFIX, 1)[1]
     redis_client = await get_redis()
-    await redis_client.delete(f"confirm:{token}")
+    await redis_client.delete(f"{CONFIRM_CB_PREFIX}{token}")
     await callback_query.message.edit_text("Отменено.")
     await callback_query.answer()

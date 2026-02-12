@@ -62,7 +62,12 @@ docker compose run --rm ownerbot_app pytest -q
 - **UI (`app/bot/ui/*`)**: чистое форматирование текстов ответов без Telegram API вызовов.
 - Правило: **No cross-router imports**. Роутеры не импортируют друг друга; общие функции выносятся в `services`/`ui`.
 
-## 7) Security / Access gate
+## 7) Contracts & Regression Tests
+- Contract tests расположены в `tests/test_contract_*.py` и используют только stdlib (без `aiogram`/`sqlalchemy`).
+- Фиксируются инварианты: callback prefixes (`confirm:`/`cancel:`), baseline-only migration policy (ровно один файл в `alembic/versions`), registry action/read contracts, router boundary `no cross-router imports`, обязательные ключи `ENV.example`.
+- Эти тесты служат anti-regression слоем и должны запускаться в ограниченной среде без внешних зависимостей.
+
+## 8) Security / Access gate
 - `OwnerGateMiddleware` применён к message и callback update stream; доступ только для `OWNER_IDS`.
 - Для non-owner deny по умолчанию silent (без ответа), но пишется audit событие `access_denied`.
 - Audit deny throttled на уровне user + update-kind (`deny:{update_kind}:{user_id}`) с TTL из `ACCESS_DENY_AUDIT_TTL_SEC` (default 60s).
