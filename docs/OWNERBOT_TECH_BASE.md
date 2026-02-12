@@ -61,3 +61,11 @@ docker compose run --rm ownerbot_app pytest -q
 - **Services (`app/bot/services/*`)**: прикладная логика роутинга интентов и запуска tools (`intent_router`, `tool_runner`).
 - **UI (`app/bot/ui/*`)**: чистое форматирование текстов ответов без Telegram API вызовов.
 - Правило: **No cross-router imports**. Роутеры не импортируют друг друга; общие функции выносятся в `services`/`ui`.
+
+## 7) Security / Access gate
+- `OwnerGateMiddleware` применён к message и callback update stream; доступ только для `OWNER_IDS`.
+- Для non-owner deny по умолчанию silent (без ответа), но пишется audit событие `access_denied`.
+- Audit deny throttled на уровне user + update-kind (`deny:{update_kind}:{user_id}`) с TTL из `ACCESS_DENY_AUDIT_TTL_SEC` (default 60s).
+- Реализация throttle: Redis-first (`exists`/`setex`), fallback-safe in-memory LRU cache (process-local, max 1000 keys).
+- Флаг `ACCESS_DENY_AUDIT_ENABLED` (default `true`) управляет записью deny-аудита.
+- Флаг `ACCESS_DENY_NOTIFY_ONCE` (default `false`) включает опциональный ответ `Нет доступа.` только в private chat, также throttled по тому же TTL-ключу.
