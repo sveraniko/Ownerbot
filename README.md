@@ -89,7 +89,12 @@ OwnerBot — отдельный бот/сервис поверх SIS, котор
 - `ASR_PROVIDER` — `mock` (default) или `openai` для реального ASR.
 - `OPENAI_API_KEY` — обязателен при `ASR_PROVIDER=openai`.
 - `OPENAI_ASR_MODEL` — модель распознавания (по умолчанию `gpt-4o-mini-transcribe`).
+- `OPENAI_LLM_MODEL` — модель планировщика интентов (например `gpt-4.1-mini`).
 - `OPENAI_BASE_URL` — base URL OpenAI API (по умолчанию `https://api.openai.com`).
+- `LLM_PROVIDER` — `OFF` (default), `OPENAI`, `MOCK`.
+- `LLM_TIMEOUT_SECONDS` — таймаут вызова LLM planner.
+- `LLM_MAX_INPUT_CHARS` — ограничение длины входного текста для planner.
+- `LLM_ALLOWED_ACTION_TOOLS` — CSV allowlist action-tools для LLM (по умолчанию `notify_team,flag_order`).
 - `ASR_TIMEOUT_SEC` — таймаут ASR запроса (сек).
 - `ASR_MAX_RETRIES` — число ретраев для 429/5xx.
 - `ASR_RETRY_BACKOFF_BASE_SEC` — базовый backoff (сек).

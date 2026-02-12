@@ -25,6 +25,7 @@ from app.core.settings import get_settings
 from app.core.audit import write_audit_event
 from app.reports.charts import render_revenue_trend_png
 from app.reports.pdf_weekly import build_weekly_report_pdf
+from app.llm.router import llm_plan_intent
 from app.tools.contracts import ToolActor, ToolTenant
 from app.tools.providers.sis_gateway import upstream_unavailable
 from app.tools.registry_setup import build_registry
@@ -154,7 +155,58 @@ async def handle_tool_call(message: Message, text: str) -> None:
     settings = get_settings()
     intent = route_intent(text)
     if intent.tool is None:
-        await message.answer(intent.error_message or "Не понял запрос. /help")
+        correlation_id = get_correlation_id()
+        try:
+            llm_intent, provider = await llm_plan_intent(text=text, settings=settings, registry=registry)
+        except Exception as exc:
+            await write_audit_event(
+                "llm_intent_failed",
+                {
+                    "provider": settings.llm_provider,
+                    "error_class": exc.__class__.__name__,
+                    "correlation_id": correlation_id,
+                },
+            )
+            await message.answer(intent.error_message or "Не понял запрос. /help")
+            return
+
+        if llm_intent.tool is None:
+            if provider != "OFF":
+                await write_audit_event(
+                    "llm_intent_failed",
+                    {
+                        "provider": provider,
+                        "error_class": "NO_TOOL",
+                        "correlation_id": correlation_id,
+                    },
+                )
+            await message.answer(llm_intent.error_message or intent.error_message or "Не понял запрос. /help")
+            return
+
+        await write_audit_event(
+            "llm_intent_planned",
+            {
+                "tool": llm_intent.tool,
+                "confidence": llm_intent.confidence,
+                "provider": provider,
+                "correlation_id": correlation_id,
+            },
+        )
+        intent.tool = llm_intent.tool
+        intent.payload = llm_intent.payload
+        intent.presentation = llm_intent.presentation
+        intent.error_message = llm_intent.error_message
+
+    if intent.tool == "weekly_preset":
+        actor = ToolActor(owner_user_id=message.from_user.id)
+        tenant = ToolTenant(
+            project="OwnerBot",
+            shop_id="shop_001",
+            currency="EUR",
+            timezone="Europe/Berlin",
+            locale="ru-RU",
+        )
+        await _send_weekly_pdf(message, actor, tenant, get_correlation_id())
         return
 
     if settings.upstream_mode != "DEMO":
