@@ -20,7 +20,14 @@ class Settings(BaseSettings):
     asr_provider: str = Field(default="mock", alias="ASR_PROVIDER")
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
     openai_asr_model: str = Field(default="gpt-4o-mini-transcribe", alias="OPENAI_ASR_MODEL")
+    openai_llm_model: str = Field(default="gpt-4.1-mini", alias="OPENAI_LLM_MODEL")
     openai_base_url: str = Field(default="https://api.openai.com", alias="OPENAI_BASE_URL")
+    llm_provider: str = Field(default="OFF", alias="LLM_PROVIDER")
+    llm_timeout_seconds: int = Field(default=20, alias="LLM_TIMEOUT_SECONDS")
+    llm_max_input_chars: int = Field(default=2000, alias="LLM_MAX_INPUT_CHARS")
+    llm_allowed_action_tools: List[str] = Field(
+        default_factory=lambda: ["notify_team", "flag_order"], alias="LLM_ALLOWED_ACTION_TOOLS"
+    )
     asr_timeout_sec: int = Field(default=20, alias="ASR_TIMEOUT_SEC")
     asr_max_retries: int = Field(default=2, alias="ASR_MAX_RETRIES")
     asr_retry_backoff_base_sec: float = Field(default=0.7, alias="ASR_RETRY_BACKOFF_BASE_SEC")
@@ -52,6 +59,17 @@ class Settings(BaseSettings):
             if not value.strip():
                 return []
             return [int(v.strip()) for v in value.split(",") if v.strip()]
+        return []
+
+    @field_validator("llm_allowed_action_tools", mode="before")
+    @classmethod
+    def parse_llm_allowed_action_tools(cls, value: object) -> List[str]:
+        if isinstance(value, list):
+            return [str(v).strip() for v in value if str(v).strip()]
+        if isinstance(value, str):
+            if not value.strip():
+                return []
+            return [v.strip() for v in value.split(",") if v.strip()]
         return []
 
 
