@@ -155,6 +155,21 @@
 - **Commit:** SIS rollback apply.
 - **Риск:** HIGH.
 
+
+### A-PR-04: SIS Templates UX (Owner console)
+- **Навигация:** `Шаблоны → Цены`
+- **Кнопки:**
+  - `Поднять цены на %`
+  - `FX пересчёт цен`
+  - `Откат последнего FX`
+- **Force UX:** если preview содержит `anomaly.over_threshold_count > 0` или warning `force required for apply`, показываются две кнопки:
+  - `✅ Применить`
+  - `⚠️ Применить несмотря на аномалию` (commit с `force=true`)
+- **Dry-run отчёт (минимум):** `affected_count`, `max_delta_pct`, `anomaly.over_threshold_count`, `examples` (до 3).
+- **Ошибки 409:**
+  - anomaly confirm required → подсказка запустить заново и выбрать force
+  - rollback without data → `Нет данных для отката`
+
 ### A-PR-03: Emergency “pause repricing” (future)
 - **Назначение:** если рынок шатает, лучше заморозить репрайсы.
 - **Примечание:** зависит от того, будет ли у SIS планировщик.

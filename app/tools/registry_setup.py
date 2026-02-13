@@ -18,6 +18,9 @@ from app.tools.impl import (
     pause_campaign,
     flag_order,
     retrospective_last,
+    sis_prices_bump,
+    sis_fx_reprice,
+    sis_fx_rollback,
 )
 
 
@@ -38,5 +41,8 @@ def build_registry() -> ToolRegistry:
     registry.register("notify_team", "1.0", notify_team.Payload, notify_team.handle, is_stub=False, kind="action")
     registry.register("pause_campaign", "1.0", pause_campaign.Payload, pause_campaign.handle, is_stub=True, kind="action")
     registry.register("flag_order", "1.0", flag_order.Payload, flag_order.handle, kind="action")
+    registry.register("sis_prices_bump", "1.0", sis_prices_bump.Payload, sis_prices_bump.handle, kind="action")
+    registry.register("sis_fx_reprice", "1.0", sis_fx_reprice.Payload, sis_fx_reprice.handle, kind="action")
+    registry.register("sis_fx_rollback", "1.0", sis_fx_rollback.Payload, sis_fx_rollback.handle, kind="action")
     registry.register("retrospective_last", "1.0", retrospective_last.Payload, retrospective_last.handle)
     return registry

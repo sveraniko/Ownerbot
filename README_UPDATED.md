@@ -52,6 +52,16 @@ OwnerBot — отдельный бот/сервис поверх SIS, котор
 
 ## Status (текущее)
 
+### Templates: Prices (SIS actions)
+- Added Owner Console templates branch: `Шаблоны → Цены` with quick actions for:
+  - global bump `%`
+  - FX reprice
+  - FX rollback
+- All write flows use existing ACTION pipeline: `dry_run → confirm → commit` with idempotency/payload hash/correlation id.
+- Force-commit UX supported for anomaly previews (`⚠️ Применить несмотря на аномалию` sends `force=true`).
+- In DEMO mode tools simulate preview/commit and never change SIS data.
+
+
 - Standalone runtime: Docker Compose (Postgres + Redis + app).
 - UPSTREAM режимы: DEMO / SIS_HTTP / AUTO (+ runtime toggle при включённом флаге).
 - Presets/artifacts: графики (PNG) и weekly PDF (опционально).

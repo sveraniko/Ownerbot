@@ -1,0 +1,249 @@
+from __future__ import annotations
+
+import json
+import uuid
+
+from aiogram import F, Router
+from aiogram.filters import Command
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message, CallbackQuery
+
+from app.actions.confirm_flow import create_confirm_token
+from app.bot.keyboards.confirm import confirm_keyboard, confirm_keyboard_with_force
+from app.bot.services.tool_runner import run_tool
+from app.bot.ui.formatting import detect_source_tag, format_tool_response
+from app.core.contracts import CANCEL_CB_PREFIX, CONFIRM_CB_PREFIX
+from app.core.logging import get_correlation_id
+from app.core.redis import get_redis
+from app.core.settings import get_settings
+from app.tools.contracts import ToolActor, ToolTenant
+from app.tools.providers.sis_gateway import upstream_unavailable
+from app.tools.registry_setup import build_registry
+from app.upstream.selector import choose_data_mode, resolve_effective_mode
+
+router = Router()
+registry = build_registry()
+
+_STATE_KEY = "ownerbot:templates:state:"
+
+
+def _kb(rows: list[list[tuple[str, str]]]) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text=t, callback_data=c) for t, c in row] for row in rows]
+    )
+
+
+async def _set_state(user_id: int, state: dict) -> None:
+    redis = await get_redis()
+    await redis.set(f"{_STATE_KEY}{user_id}", json.dumps(state), ex=900)
+
+
+async def _get_state(user_id: int) -> dict | None:
+    redis = await get_redis()
+    raw = await redis.get(f"{_STATE_KEY}{user_id}")
+    if not raw:
+        return None
+    return json.loads(raw)
+
+
+async def _clear_state(user_id: int) -> None:
+    redis = await get_redis()
+    await redis.delete(f"{_STATE_KEY}{user_id}")
+
+
+@router.message(Command("templates"))
+async def cmd_templates(message: Message) -> None:
+    await message.answer("Шаблоны", reply_markup=_kb([[('💸 Цены', 'tpl:prices')]]))
+
+
+@router.callback_query(F.data == "tpl:prices")
+async def tpl_prices(callback_query: CallbackQuery) -> None:
+    await callback_query.message.edit_text(
+        "Шаблоны → Цены",
+        reply_markup=_kb(
+            [
+                [("Поднять цены на %", "tpl:prices:bump")],
+                [("FX пересчёт цен", "tpl:prices:fx")],
+                [("Откат последнего FX", "tpl:prices:rollback")],
+            ]
+        ),
+    )
+    await callback_query.answer()
+
+
+@router.callback_query(F.data == "tpl:prices:bump")
+async def tpl_bump(callback_query: CallbackQuery) -> None:
+    await _set_state(callback_query.from_user.id, {"tool": "sis_prices_bump", "step": "bump_percent", "payload": {}})
+    await callback_query.message.edit_text(
+        "Поднять цены на %: выбери кнопку или используй /tpl_bump <число>.",
+        reply_markup=_kb([[('+5', 'tpl:set:bump:5'), ('+10', 'tpl:set:bump:10'), ('+15', 'tpl:set:bump:15'), ('+20', 'tpl:set:bump:20')]]),
+    )
+    await callback_query.answer()
+
+
+@router.callback_query(F.data.startswith("tpl:set:bump:"))
+async def tpl_bump_preset(callback_query: CallbackQuery) -> None:
+    value = callback_query.data.split(":")[-1]
+    await _run_template_action(
+        callback_query.message,
+        callback_query.from_user.id,
+        "sis_prices_bump",
+        {"bump_percent": value, "bump_additive": "0", "rounding_mode": "CEIL_INT", "dry_run": True},
+    )
+    await _clear_state(callback_query.from_user.id)
+    await callback_query.answer()
+
+
+@router.callback_query(F.data == "tpl:prices:fx")
+async def tpl_fx(callback_query: CallbackQuery) -> None:
+    await _set_state(
+        callback_query.from_user.id,
+        {
+            "tool": "sis_fx_reprice",
+            "step": "input_currency",
+            "payload": {
+                "markup_percent": "0",
+                "markup_additive": "0",
+                "rounding_mode": "CEIL_INT",
+                "anomaly_threshold_pct": "25",
+            },
+        },
+    )
+    await callback_query.message.edit_text(
+        "FX пересчёт: выбери input_currency",
+        reply_markup=_kb([[('USD', 'tpl:set:fx:input:USD'), ('EUR', 'tpl:set:fx:input:EUR'), ('UAH', 'tpl:set:fx:input:UAH'), ('PLN', 'tpl:set:fx:input:PLN')]]),
+    )
+    await callback_query.answer()
+
+
+@router.callback_query(F.data.startswith("tpl:set:fx:input:"))
+async def tpl_fx_input(callback_query: CallbackQuery) -> None:
+    value = callback_query.data.split(":")[-1]
+    state = await _get_state(callback_query.from_user.id) or {}
+    payload = state.get("payload", {})
+    payload["input_currency"] = value
+    await _set_state(callback_query.from_user.id, {"tool": "sis_fx_reprice", "step": "shop_currency", "payload": payload})
+    await callback_query.message.edit_text(
+        "Выбери shop_currency",
+        reply_markup=_kb([[('EUR', 'tpl:set:fx:shop:EUR'), ('UAH', 'tpl:set:fx:shop:UAH'), ('USD', 'tpl:set:fx:shop:USD'), ('PLN', 'tpl:set:fx:shop:PLN')]]),
+    )
+    await callback_query.answer()
+
+
+@router.callback_query(F.data.startswith("tpl:set:fx:shop:"))
+async def tpl_fx_shop(callback_query: CallbackQuery) -> None:
+    value = callback_query.data.split(":")[-1]
+    state = await _get_state(callback_query.from_user.id) or {}
+    payload = state.get("payload", {})
+    payload["shop_currency"] = value
+    await _set_state(callback_query.from_user.id, {"tool": "sis_fx_reprice", "step": "rate_set_id", "payload": payload})
+    await callback_query.message.edit_text("Введи rate_set_id: команда /tpl_rate_set <hash>")
+    await callback_query.answer()
+
+
+@router.callback_query(F.data == "tpl:prices:rollback")
+async def tpl_rollback(callback_query: CallbackQuery) -> None:
+    await _run_template_action(callback_query.message, callback_query.from_user.id, "sis_fx_rollback", {"dry_run": True})
+    await callback_query.answer()
+
+
+@router.message(Command("tpl_bump"))
+async def tpl_bump_input(message: Message) -> None:
+    if message.text is None:
+        return
+    raw = message.text.replace("/tpl_bump", "", 1).strip()
+    if not raw:
+        await message.answer("Формат: /tpl_bump 10")
+        return
+    await _clear_state(message.from_user.id)
+    await _run_template_action(message, message.from_user.id, "sis_prices_bump", {"bump_percent": raw, "bump_additive": "0", "rounding_mode": "CEIL_INT", "dry_run": True})
+
+
+@router.message(Command("tpl_rate_set"))
+async def tpl_rate_set_input(message: Message) -> None:
+    if message.text is None:
+        return
+    state = await _get_state(message.from_user.id)
+    if not state or state.get("tool") != "sis_fx_reprice" or state.get("step") != "rate_set_id":
+        await message.answer("Нет активного FX шаблона. Запусти: /templates → Шаблоны → Цены → FX пересчёт цен")
+        return
+    raw = message.text.replace("/tpl_rate_set", "", 1).strip()
+    if not raw:
+        await message.answer("Формат: /tpl_rate_set <hash>")
+        return
+    payload = state.get("payload", {})
+    payload["rate_set_id"] = raw
+    payload["dry_run"] = True
+    await _clear_state(message.from_user.id)
+    await _run_template_action(message, message.from_user.id, "sis_fx_reprice", payload)
+
+
+
+
+async def _run_template_action(message: Message, owner_user_id: int, tool_name: str, payload: dict) -> None:
+    settings = get_settings()
+    redis = await get_redis()
+    effective_mode, _ = await resolve_effective_mode(settings=settings, redis=redis)
+    correlation_id = get_correlation_id()
+    actor = ToolActor(owner_user_id=owner_user_id)
+    tenant = ToolTenant(project="OwnerBot", shop_id="shop_001", currency="EUR", timezone="Europe/Berlin", locale="ru-RU")
+
+    async def _ping_failover():
+        return upstream_unavailable(correlation_id)
+
+    await choose_data_mode(
+        effective_mode=effective_mode,
+        redis=redis,
+        correlation_id=correlation_id,
+        ping_callable=_ping_failover,
+    )
+
+    response = await run_tool(
+        tool_name,
+        payload,
+        message=message,
+        actor=actor,
+        tenant=tenant,
+        correlation_id=correlation_id,
+        idempotency_key=str(uuid.uuid4()),
+        registry=registry,
+    )
+
+    if payload.get("dry_run") is True and response.status == "ok":
+        payload_commit = dict(payload)
+        payload_commit["dry_run"] = False
+        confirm_payload = {
+            "tool_name": tool_name,
+            "payload_commit": payload_commit,
+            "owner_user_id": owner_user_id,
+            "idempotency_key": str(uuid.uuid4()),
+        }
+        token = await create_confirm_token(confirm_payload)
+
+        anomaly = response.data.get("anomaly") if isinstance(response.data, dict) else None
+        over_count = int((anomaly or {}).get("over_threshold_count", 0) or 0)
+        has_force_warning = any("force required for apply" in w.message.lower() for w in response.warnings)
+        if over_count > 0 or has_force_warning:
+            force_payload = dict(payload_commit)
+            force_payload["force"] = True
+            force_token = await create_confirm_token(
+                {
+                    "tool_name": tool_name,
+                    "payload_commit": force_payload,
+                    "owner_user_id": owner_user_id,
+                    "idempotency_key": str(uuid.uuid4()),
+                }
+            )
+            kb = confirm_keyboard_with_force(
+                f"{CONFIRM_CB_PREFIX}{token}",
+                f"{CONFIRM_CB_PREFIX}{force_token}",
+                f"{CANCEL_CB_PREFIX}{token}",
+            )
+        else:
+            kb = confirm_keyboard(f"{CONFIRM_CB_PREFIX}{token}", f"{CANCEL_CB_PREFIX}{token}")
+
+        source_tag = detect_source_tag(response)
+        await message.answer(format_tool_response(response, source_tag=source_tag), reply_markup=kb)
+        return
+
+    source_tag = detect_source_tag(response)
+    await message.answer(format_tool_response(response, source_tag=source_tag))
