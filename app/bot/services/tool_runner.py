@@ -58,7 +58,7 @@ async def run_tool(
     tool_registry = registry or build_registry()
     tool = tool_registry.get(tool_name)
     if tool is None:
-        return await _finish(ToolResponse.error(
+        return await _finish(ToolResponse.fail(
             correlation_id=correlation_id,
             code="NOT_IMPLEMENTED",
             message=f"Tool {tool_name} is not registered.",
@@ -67,7 +67,7 @@ async def run_tool(
     try:
         payload = tool.payload_model(**payload_dict)
     except ValidationError as exc:
-        return await _finish(ToolResponse.error(
+        return await _finish(ToolResponse.fail(
             correlation_id=correlation_id,
             code="VALIDATION_ERROR",
             message="Некорректные данные.",

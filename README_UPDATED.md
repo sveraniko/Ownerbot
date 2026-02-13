@@ -91,6 +91,9 @@ docker compose up --build
 
 ## Local development
 
+Требования: **Python 3.12 (предпочтительно)**, допустимо 3.11+.
+Ключевые пины зависимостей: `aiogram==3.25.0`, `pydantic>=2.12,<2.13`, `pydantic-settings==2.12.0`.
+
 ```bash
 python -m venv .venv
 . .venv/bin/activate

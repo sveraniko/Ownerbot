@@ -3,6 +3,13 @@
 
 ---
 
+## 0) Runtime / dependencies baseline
+- Базовый контейнер: `python:3.12-slim` (локально поддерживается Python 3.11+).
+- Зафиксированные ключевые версии: `aiogram==3.25.0`, `pydantic>=2.12,<2.13`, `pydantic-settings==2.12.0`.
+- Совместимость pydantic-settings настроек обеспечивается через `SettingsConfigDict(..., populate_by_name=True)` в `app/core/settings.py`.
+
+---
+
 ## 1) Архитектура пакетов (SSOT)
 - **app/core** — настройки, логирование, DB/Redis, time/security.
 - **app/bot** — Telegram entrypoint, routers, middlewares, keyboards.

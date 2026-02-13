@@ -130,7 +130,7 @@ async def handle_confirm(callback_query: CallbackQuery) -> None:
             status = "committed" if response.status == "ok" else "failed"
         except Exception as exc:
             status = "failed"
-            response = ToolResponse.error(
+            response = ToolResponse.fail(
                 correlation_id=correlation_id,
                 code="ACTION_EXCEPTION",
                 message="Ошибка выполнения действия.",

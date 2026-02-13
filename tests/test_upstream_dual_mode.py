@@ -52,7 +52,7 @@ async def test_auto_mode_falls_back_to_demo_on_ping_fail() -> None:
     redis = InMemoryRedis()
 
     async def ping_fail() -> ToolResponse:
-        return ToolResponse.error(correlation_id="c1", code="UPSTREAM_UNAVAILABLE", message="down")
+        return ToolResponse.fail(correlation_id="c1", code="UPSTREAM_UNAVAILABLE", message="down")
 
     selected_mode, ping_response = await choose_data_mode(
         effective_mode="AUTO",

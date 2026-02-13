@@ -24,7 +24,7 @@ async def handle(
     result = await session.execute(stmt)
     order = result.scalar_one_or_none()
     if order is None:
-        return ToolResponse.error(
+        return ToolResponse.fail(
             correlation_id=correlation_id,
             code="NOT_FOUND",
             message=f"Order {payload.order_id} not found.",
