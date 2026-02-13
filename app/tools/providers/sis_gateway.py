@@ -8,7 +8,7 @@ from app.upstream.sis_client import SisClient
 
 
 def upstream_unavailable(correlation_id: str) -> ToolResponse:
-    return ToolResponse.error(
+    return ToolResponse.fail(
         correlation_id=correlation_id,
         code="UPSTREAM_UNAVAILABLE",
         message="SIS upstream is unavailable.",
@@ -37,4 +37,4 @@ async def run_sis_tool(*, tool_name: str, payload: dict, correlation_id: str, se
     if tool_name == "order_detail":
         order_id = str(payload.get("order_id", "")).strip()
         return await client.order_detail(order_id=order_id, correlation_id=correlation_id)
-    return ToolResponse.error(correlation_id=correlation_id, code="NOT_IMPLEMENTED", message=f"SIS mapping for {tool_name} not implemented.")
+    return ToolResponse.fail(correlation_id=correlation_id, code="NOT_IMPLEMENTED", message=f"SIS mapping for {tool_name} not implemented.")

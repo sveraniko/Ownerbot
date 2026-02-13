@@ -92,7 +92,7 @@ def test_confidence_warning_insufficient_data() -> None:
 
 
 def test_confidence_error_case() -> None:
-    response = ToolResponse.error(correlation_id="c3", code="UPSTREAM_UNAVAILABLE", message="upstream")
+    response = ToolResponse.fail(correlation_id="c3", code="UPSTREAM_UNAVAILABLE", message="upstream")
 
     data_conf = compute_data_confidence(response)
     decision_conf = compute_decision_confidence(0.5, data_conf.score, had_errors=True)

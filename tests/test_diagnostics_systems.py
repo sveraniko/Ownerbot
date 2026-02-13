@@ -57,7 +57,7 @@ async def test_run_systems_check_sis_unavailable(monkeypatch: pytest.MonkeyPatch
 
     class _SisClient:
         async def ping(self, correlation_id: str) -> ToolResponse:
-            return ToolResponse.error(correlation_id=correlation_id, code="UPSTREAM_UNAVAILABLE", message="down")
+            return ToolResponse.fail(correlation_id=correlation_id, code="UPSTREAM_UNAVAILABLE", message="down")
 
     monkeypatch.setattr("app.diagnostics.systems.check_db", _ok)
     monkeypatch.setattr("app.diagnostics.systems.check_redis", _ok)
@@ -97,7 +97,7 @@ async def test_run_systems_check_contract_degraded(monkeypatch: pytest.MonkeyPat
             return ToolResponse.ok(correlation_id=correlation_id, data={"service": "sis"}, provenance=ToolProvenance())
 
         async def kpi_summary(self, **kwargs) -> ToolResponse:
-            return ToolResponse.error(correlation_id="corr-1", code="PROVENANCE_INCOMPLETE", message="bad")
+            return ToolResponse.fail(correlation_id="corr-1", code="PROVENANCE_INCOMPLETE", message="bad")
 
     monkeypatch.setattr("app.diagnostics.systems.check_db", _ok)
     monkeypatch.setattr("app.diagnostics.systems.check_redis", _ok)

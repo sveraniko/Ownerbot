@@ -29,7 +29,7 @@ async def handle(
     settings = get_settings()
     manager_chat_ids = list(settings.manager_chat_ids or [])
     if not manager_chat_ids:
-        return ToolResponse.error(
+        return ToolResponse.fail(
             correlation_id=correlation_id,
             code="CONFIG_MISSING",
             message="MANAGER_CHAT_IDS is not set",
@@ -48,7 +48,7 @@ async def handle(
         return ToolResponse.ok(correlation_id=correlation_id, data=data, provenance=provenance)
 
     if bot is None:
-        return ToolResponse.error(
+        return ToolResponse.fail(
             correlation_id=correlation_id,
             code="BOT_CONTEXT_MISSING",
             message="Bot context is required for delivery",
@@ -74,7 +74,7 @@ async def handle(
     }
 
     if not sent and failed:
-        return ToolResponse.error(
+        return ToolResponse.fail(
             correlation_id=correlation_id,
             code="DELIVERY_FAILED",
             message="Failed to deliver to all recipients",

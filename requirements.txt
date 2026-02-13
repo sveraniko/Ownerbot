@@ -1,5 +1,5 @@
 aiogram==3.25.0
-pydantic==2.12,<2.13
+pydantic>=2.12,<2.13
 pydantic-settings==2.12.0
 SQLAlchemy==2.0.27
 asyncpg==0.29.0

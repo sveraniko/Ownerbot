@@ -14,7 +14,7 @@ class ActionStubPayload(BaseModel):
 
 
 def not_implemented(correlation_id: str, tool_name: str) -> ToolResponse:
-    return ToolResponse.error(
+    return ToolResponse.fail(
         correlation_id=correlation_id,
         code="NOT_IMPLEMENTED",
         message=f"Tool {tool_name} is not implemented yet.",

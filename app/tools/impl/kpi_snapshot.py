@@ -22,7 +22,7 @@ async def handle(payload: KpiSnapshotPayload, correlation_id: str, session) -> T
     result = await session.execute(stmt)
     row = result.scalar_one_or_none()
     if row is None:
-        return ToolResponse.error(
+        return ToolResponse.fail(
             correlation_id=correlation_id,
             code="NOT_FOUND",
             message="No KPI data available.",

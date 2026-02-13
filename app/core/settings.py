@@ -8,13 +8,18 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        populate_by_name=True,
+        extra="ignore",
+    )
 
-    bot_token: str = Field(alias="BOT_TOKEN")
+    bot_token: str = Field(default="", alias="BOT_TOKEN")
     owner_ids: List[int] = Field(default_factory=list, alias="OWNER_IDS")
     manager_chat_ids: List[int] = Field(default_factory=list, alias="MANAGER_CHAT_IDS")
-    database_url: str = Field(alias="DATABASE_URL")
-    redis_url: str = Field(alias="REDIS_URL")
+    database_url: str = Field(default="sqlite+aiosqlite:///:memory:", alias="DATABASE_URL")
+    redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
     upstream_mode: str = Field(default="DEMO", alias="UPSTREAM_MODE")
     sis_base_url: str = Field(default="", alias="SIS_BASE_URL")
     sis_ownerbot_api_key: str = Field(default="", alias="SIS_OWNERBOT_API_KEY")

@@ -58,7 +58,7 @@ class SisClient:
                         if attempt < retries:
                             await asyncio.sleep(backoff * (2**attempt))
                             continue
-                    return ToolResponse.error(
+                    return ToolResponse.fail(
                         correlation_id=correlation_id,
                         code="UPSTREAM_UNAVAILABLE",
                         message=f"SIS error status {resp.status_code}.",
@@ -76,21 +76,21 @@ class SisClient:
                 if attempt < retries:
                     await asyncio.sleep(backoff * (2**attempt))
                     continue
-                return ToolResponse.error(correlation_id=correlation_id, code="UPSTREAM_UNAVAILABLE", message="SIS upstream is unavailable.")
+                return ToolResponse.fail(correlation_id=correlation_id, code="UPSTREAM_UNAVAILABLE", message="SIS upstream is unavailable.")
             except ValueError:
-                return ToolResponse.error(correlation_id=correlation_id, code="UPSTREAM_UNAVAILABLE", message="Invalid SIS JSON envelope.")
+                return ToolResponse.fail(correlation_id=correlation_id, code="UPSTREAM_UNAVAILABLE", message="Invalid SIS JSON envelope.")
 
-        return ToolResponse.error(correlation_id=correlation_id, code="UPSTREAM_UNAVAILABLE", message="SIS upstream is unavailable.")
+        return ToolResponse.fail(correlation_id=correlation_id, code="UPSTREAM_UNAVAILABLE", message="SIS upstream is unavailable.")
 
 
 def _parse_envelope(payload: dict[str, Any], correlation_id: str) -> ToolResponse:
     if not isinstance(payload, dict):
-        return ToolResponse.error(correlation_id=correlation_id, code="PROVENANCE_INCOMPLETE", message="Envelope is not an object.")
+        return ToolResponse.fail(correlation_id=correlation_id, code="PROVENANCE_INCOMPLETE", message="Envelope is not an object.")
     provenance = payload.get("provenance")
     if not isinstance(provenance, dict) or "sources" not in provenance or "filters_hash" not in provenance:
-        return ToolResponse.error(correlation_id=correlation_id, code="PROVENANCE_INCOMPLETE", message="SIS provenance is incomplete.")
+        return ToolResponse.fail(correlation_id=correlation_id, code="PROVENANCE_INCOMPLETE", message="SIS provenance is incomplete.")
     if "as_of" not in payload or "data" not in payload:
-        return ToolResponse.error(correlation_id=correlation_id, code="PROVENANCE_INCOMPLETE", message="SIS envelope is incomplete.")
+        return ToolResponse.fail(correlation_id=correlation_id, code="PROVENANCE_INCOMPLETE", message="SIS envelope is incomplete.")
 
     return ToolResponse.ok(
         correlation_id=correlation_id,

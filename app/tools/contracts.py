@@ -76,7 +76,7 @@ class ToolResponse(BaseModel):
         )
 
     @classmethod
-    def error(
+    def fail(
         cls,
         correlation_id: str,
         code: str,
