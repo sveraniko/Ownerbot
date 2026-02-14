@@ -51,6 +51,12 @@ async def run_sis_action(*, path: str, payload: dict[str, Any], correlation_id: 
     raw_warnings = data.get("warnings") if isinstance(data, dict) else None
     if isinstance(raw_warnings, list):
         for item in raw_warnings:
+            if isinstance(item, dict):
+                code = item.get("code")
+                message = item.get("message")
+                if isinstance(code, str) and code.strip() and isinstance(message, str) and message.strip():
+                    warnings.append(ToolWarning(code=code, message=message))
+                    continue
             if isinstance(item, str) and item.strip():
                 warnings.append(ToolWarning(code="SIS_WARNING", message=item))
 

@@ -21,6 +21,10 @@ from app.tools.impl import (
     sis_prices_bump,
     sis_fx_reprice,
     sis_fx_rollback,
+    sis_products_publish,
+    sis_looks_publish,
+    sis_discounts_clear,
+    sis_discounts_set,
 )
 
 
@@ -44,5 +48,9 @@ def build_registry() -> ToolRegistry:
     registry.register("sis_prices_bump", "1.0", sis_prices_bump.Payload, sis_prices_bump.handle, kind="action")
     registry.register("sis_fx_reprice", "1.0", sis_fx_reprice.Payload, sis_fx_reprice.handle, kind="action")
     registry.register("sis_fx_rollback", "1.0", sis_fx_rollback.Payload, sis_fx_rollback.handle, kind="action")
+    registry.register("sis_products_publish", "1.0", sis_products_publish.Payload, sis_products_publish.handle, kind="action")
+    registry.register("sis_looks_publish", "1.0", sis_looks_publish.Payload, sis_looks_publish.handle, kind="action")
+    registry.register("sis_discounts_clear", "1.0", sis_discounts_clear.Payload, sis_discounts_clear.handle, kind="action")
+    registry.register("sis_discounts_set", "1.0", sis_discounts_set.Payload, sis_discounts_set.handle, kind="action")
     registry.register("retrospective_last", "1.0", retrospective_last.Payload, retrospective_last.handle)
     return registry

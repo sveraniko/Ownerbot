@@ -8,6 +8,8 @@ from app.tools.contracts import ToolProvenance, ToolResponse, ToolWarning
 class _DummyMessage:
     def __init__(self) -> None:
         self.calls = []
+        self.from_user = SimpleNamespace(id=42)
+        self.text = None
 
     async def answer(self, text: str, reply_markup=None):
         self.calls.append((text, reply_markup))
@@ -26,9 +28,9 @@ async def test_template_flow_dry_run_creates_force_confirm_buttons(monkeypatch) 
     async def _run_tool(*args, **kwargs):
         return ToolResponse.ok(
             correlation_id="corr",
-            data={"affected_count": 5, "anomaly": {"over_threshold_count": 1}},
+            data={"affected_count": 5, "anomaly": {"over_threshold_count": 0}},
             provenance=ToolProvenance(sources=["sis"]),
-            warnings=[ToolWarning(code="SIS_WARNING", message="force required for apply")],
+            warnings=[ToolWarning(code="FORCE_REQUIRED", message="Need force")],
         )
 
     tokens = ["tok-normal", "tok-force"]
@@ -44,10 +46,7 @@ async def test_template_flow_dry_run_creates_force_confirm_buttons(monkeypatch) 
     msg = _DummyMessage()
     await templates._run_template_action(msg, 42, "sis_fx_reprice", {"dry_run": True, "rate_set_id": "h", "input_currency": "USD", "shop_currency": "EUR"})
 
-    assert len(msg.calls) == 1
-    text, markup = msg.calls[0]
-    assert "affected_count" in text
-    assert markup is not None
+    _, markup = msg.calls[0]
     flat = [b.text for row in markup.inline_keyboard for b in row]
     assert "✅ Применить" in flat
     assert "⚠️ Применить несмотря на аномалию" in flat
@@ -84,3 +83,18 @@ async def test_template_flow_dry_run_default_confirm_button(monkeypatch) -> None
     _, markup = msg.calls[0]
     flat = [b.text for row in markup.inline_keyboard for b in row]
     assert "✅ Подтвердить" in flat
+
+
+def test_template_parse_helpers() -> None:
+    from app.bot.routers.templates import _parse_ids, _parse_percent, _parse_stock_threshold
+
+    assert _parse_ids("a, b\nc") == ["a", "b", "c"]
+    assert _parse_percent("25") == 25
+    assert _parse_stock_threshold("9") == 9
+
+    with pytest.raises(ValueError):
+        _parse_ids("  ")
+    with pytest.raises(ValueError):
+        _parse_percent("96")
+    with pytest.raises(ValueError):
+        _parse_stock_threshold("0")

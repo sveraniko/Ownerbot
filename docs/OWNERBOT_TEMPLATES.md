@@ -291,3 +291,34 @@
 - Все ACTION вызовы в SIS идут через SIS Action API (SIS-ACT-01) с correlation_id.
 - В OwnerBot действия должны записываться в audit trail с payload_hash и статусами.
 
+
+
+## 12) PR-OwnerBot-TPL-02: Templates → Товары / Луки / Скидки
+
+### Товары
+- **Опубликовать товары (по ID)** → `sis_products_publish` (`target_status=ACTIVE`).
+- **Снять с публикации товары (по ID)** → `sis_products_publish` (`target_status=ARCHIVED`).
+- **Опубликовать ВСЕ товары** → `status_from=ARCHIVED`, `target_status=ACTIVE`.
+- **Снять с публикации ВСЕ товары** → `status_from=ACTIVE`, `target_status=ARCHIVED`.
+
+### Луки
+- **Опубликовать луки (по ID)** → `sis_looks_publish` (`target_active=true`).
+- **Снять с публикации луки (по ID)** → `sis_looks_publish` (`target_active=false`).
+- **Опубликовать ВСЕ луки / Снять ВСЕ луки** через `is_active_from`.
+
+### Скидки
+- **Удалить скидки (по ID товаров)** → `sis_discounts_clear`.
+- **Удалить ВСЕ скидки** → `sis_discounts_clear` без `product_ids`.
+- **Поставить скидку % (по ID товаров)** → `sis_discounts_set` (ввод IDs + `%`).
+- **Поставить скидку % на остатки <= N** → `sis_discounts_set` (ввод `N` + `%`).
+
+### Ввод и валидация (OwnerBot side)
+- IDs: разделители `,` / пробел / новая строка; максимум 200 ID.
+- `%`: целое 1..95.
+- `N`: целое 1..9999.
+
+### Safety / FORCE
+- Dry-run всегда перед commit.
+- FORCE-кнопка показывается, если есть warning code `FORCE_REQUIRED` или `MASS_CHANGE_OVER*`.
+- Для обратной совместимости также учитывается legacy warning text `force required for apply`.
+- FORCE commit отправляет `payload_commit.force=true`.
