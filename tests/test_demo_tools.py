@@ -4,13 +4,24 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.storage.models import Base, OwnerbotDemoChatThread, OwnerbotDemoKpiDaily, OwnerbotDemoOrder
+from app.storage.models import (
+    Base,
+    OwnerbotDemoChatThread,
+    OwnerbotDemoKpiDaily,
+    OwnerbotDemoOrder,
+    OwnerbotDemoOrderItem,
+    OwnerbotDemoProduct,
+)
 from app.tools.contracts import ToolActor
 from app.tools.impl.bulk_flag_order import Payload as BulkFlagPayload, handle as bulk_flag_handle
 from app.tools.impl.chats_unanswered import Payload as ChatsPayload, handle as chats_handle
+from app.tools.impl.inventory_status import Payload as InventoryPayload, handle as inventory_handle
+from app.tools.impl.kpi_compare import Payload as ComparePayload, handle as compare_handle
 from app.tools.impl.order_detail import Payload as OrderPayload, handle as order_handle
 from app.tools.impl.orders_search import OrdersSearchPayload, handle as orders_search_handle
 from app.tools.impl.revenue_trend import Payload as TrendPayload, handle as trend_handle
+from app.tools.impl.team_queue_summary import Payload as TeamQueuePayload, handle as team_queue_handle
+from app.tools.impl.top_products import Payload as TopProductsPayload, handle as top_products_handle
 
 
 @pytest.mark.asyncio
@@ -271,3 +282,146 @@ async def test_bulk_flag_order_preview_commit_and_noop():
     assert noop.status == "ok"
     assert noop.data["status"] == "noop"
     assert noop.data["would_apply"] is False
+
+
+@pytest.mark.asyncio
+async def test_kpi_compare_wow_and_custom():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    start_day = date.today() - timedelta(days=19)
+    async with async_session() as session:
+        for offset in range(20):
+            day = start_day + timedelta(days=offset)
+            session.add(
+                OwnerbotDemoKpiDaily(
+                    day=day,
+                    revenue_gross=100 + offset * 3,
+                    revenue_net=90 + offset * 2,
+                    orders_paid=4 + (offset % 4),
+                    orders_created=7 + (offset % 5),
+                    aov=20 + offset,
+                )
+            )
+        await session.commit()
+
+    async with async_session() as session:
+        wow = await compare_handle(ComparePayload(preset="wow", days=7), "corr", session)
+
+    assert wow.status == "ok"
+    assert set(wow.data["delta"].keys()) == {"revenue_gross_sum", "revenue_net_sum", "orders_paid_sum", "orders_created_sum"}
+    assert "start" in wow.data["window_a"]
+
+    async with async_session() as session:
+        custom = await compare_handle(
+            ComparePayload(
+                preset="custom",
+                a_start=start_day + timedelta(days=9),
+                a_end=start_day + timedelta(days=11),
+                b_start=start_day + timedelta(days=6),
+                b_end=start_day + timedelta(days=8),
+            ),
+            "corr",
+            session,
+        )
+
+    assert custom.status == "ok"
+    assert custom.data["window_a"]["start"] == (start_day + timedelta(days=9)).isoformat()
+    assert custom.data["window_b"]["end"] == (start_day + timedelta(days=8)).isoformat()
+
+
+@pytest.mark.asyncio
+async def test_team_queue_summary_buckets():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    now = datetime.now(timezone.utc)
+    async with async_session() as session:
+        session.add_all(
+            [
+                OwnerbotDemoChatThread(thread_id="TH-A", customer_id="c1", open=True, last_customer_message_at=now - timedelta(hours=3), last_manager_reply_at=None),
+                OwnerbotDemoChatThread(thread_id="TH-B", customer_id="c2", open=True, last_customer_message_at=now - timedelta(hours=8), last_manager_reply_at=None),
+                OwnerbotDemoChatThread(thread_id="TH-C", customer_id="c3", open=True, last_customer_message_at=now - timedelta(hours=30), last_manager_reply_at=now - timedelta(hours=31)),
+                OwnerbotDemoChatThread(thread_id="TH-D", customer_id="c4", open=True, last_customer_message_at=now - timedelta(hours=1), last_manager_reply_at=now),
+            ]
+        )
+        await session.commit()
+
+    async with async_session() as session:
+        response = await team_queue_handle(TeamQueuePayload(), "corr", session)
+
+    assert response.status == "ok"
+    assert response.data["total_open_threads"] == 3
+    assert response.data["unanswered_2h"] == 3
+    assert response.data["unanswered_6h"] == 2
+    assert response.data["unanswered_24h"] == 1
+
+
+@pytest.mark.asyncio
+async def test_top_products_revenue_ordering():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    now = datetime.now(timezone.utc)
+    async with async_session() as session:
+        session.add_all(
+            [
+                OwnerbotDemoProduct(product_id="P1", title="Prod 1", category="CatA", price=10, currency="EUR", stock_qty=5, has_photo=True, published=True),
+                OwnerbotDemoProduct(product_id="P2", title="Prod 2", category="CatA", price=30, currency="EUR", stock_qty=5, has_photo=True, published=True),
+                OwnerbotDemoProduct(product_id="P3", title="Prod 3", category="CatB", price=25, currency="EUR", stock_qty=5, has_photo=True, published=True),
+                OwnerbotDemoOrder(order_id="O1", status="paid", amount=70, currency="EUR", customer_id="c1", payment_status="paid", created_at=now - timedelta(days=1)),
+                OwnerbotDemoOrder(order_id="O2", status="paid", amount=100, currency="EUR", customer_id="c2", payment_status="paid", created_at=now - timedelta(days=2)),
+            ]
+        )
+        session.add_all(
+            [
+                OwnerbotDemoOrderItem(order_id="O1", product_id="P1", qty=1, unit_price=10, currency="EUR", created_at=now),
+                OwnerbotDemoOrderItem(order_id="O1", product_id="P2", qty=2, unit_price=30, currency="EUR", created_at=now),
+                OwnerbotDemoOrderItem(order_id="O2", product_id="P3", qty=4, unit_price=25, currency="EUR", created_at=now),
+            ]
+        )
+        await session.commit()
+
+    async with async_session() as session:
+        response = await top_products_handle(TopProductsPayload(days=7, metric="revenue", direction="top", group_by="product", limit=10), "corr", session)
+
+    assert response.status == "ok"
+    assert response.data["rows"]
+    assert response.data["rows"][0]["key"] == "P3"
+    assert response.data["rows"][1]["key"] == "P2"
+
+
+@pytest.mark.asyncio
+async def test_inventory_status_categories():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with async_session() as session:
+        session.add_all(
+            [
+                OwnerbotDemoProduct(product_id="P0", title="Out", category="C", price=10, currency="EUR", stock_qty=0, has_photo=True, published=True),
+                OwnerbotDemoProduct(product_id="P1", title="Low", category="C", price=10, currency="EUR", stock_qty=3, has_photo=True, published=True),
+                OwnerbotDemoProduct(product_id="P2", title="NoPhoto", category="C", price=10, currency="EUR", stock_qty=4, has_photo=False, published=True),
+                OwnerbotDemoProduct(product_id="P3", title="NoPrice", category="C", price=0, currency="EUR", stock_qty=4, has_photo=True, published=True),
+                OwnerbotDemoProduct(product_id="P4", title="Hidden", category="C", price=10, currency="EUR", stock_qty=0, has_photo=True, published=False),
+            ]
+        )
+        await session.commit()
+
+    async with async_session() as session:
+        response = await inventory_handle(InventoryPayload(low_stock_lte=5, limit=20), "corr", session)
+
+    assert response.status == "ok"
+    assert response.data["counts"]["out_of_stock"] == 1
+    assert response.data["counts"]["low_stock"] == 3
+    assert {item["product_id"] for item in response.data["missing_photo"]} == {"P2"}
+    assert {item["product_id"] for item in response.data["missing_price"]} == {"P3"}
+    assert {item["product_id"] for item in response.data["unpublished"]} == {"P4"}

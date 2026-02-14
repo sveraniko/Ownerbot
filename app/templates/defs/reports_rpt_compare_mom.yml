@@ -3,8 +3,8 @@ category: reports
 title: Сравнение MoM
 button_text: Сравнение MoM
 kind: REPORT
-tool_name: revenue_trend
+tool_name: kpi_compare
 order: 60
 default_payload:
-  days: 30
+  preset: mom
 inputs: []

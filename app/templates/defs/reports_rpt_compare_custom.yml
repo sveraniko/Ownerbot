@@ -5,5 +5,18 @@ button_text: Сравнить периоды
 kind: REPORT
 tool_name: kpi_compare
 order: 70
-default_payload: {}
-inputs: []
+default_payload:
+  preset: custom
+inputs:
+  - key: a_start
+    prompt: Введите начало периода A (YYYY-MM-DD)
+    parser: str
+  - key: a_end
+    prompt: Введите конец периода A (YYYY-MM-DD)
+    parser: str
+  - key: b_start
+    prompt: Введите начало периода B (YYYY-MM-DD)
+    parser: str
+  - key: b_end
+    prompt: Введите конец периода B (YYYY-MM-DD)
+    parser: str

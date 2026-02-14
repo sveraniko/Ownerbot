@@ -15,6 +15,10 @@ EXPECTED_TEMPLATE_IDS = {
     "RPT_STUCK_ORDERS_SUMMARY",
     "RPT_UNANSWERED_CHATS_SUMMARY",
     "RPT_WEEKLY_PDF",
+    "RPT_TOP_PRODUCTS_7D",
+    "RPT_TOP_PRODUCTS_QTY_7D",
+    "RPT_BOTTOM_PRODUCTS_7D",
+    "RPT_TOP_CATEGORIES_30D",
     "ORD_FIND_BY_ID",
     "ORD_FIND_BY_PHONE",
     "ORD_FIND_BY_STATUS",
@@ -37,6 +41,7 @@ EXPECTED_TEMPLATE_IDS = {
     "ADV_RAW_TOOL_CALL",
     "ADV_EXPORT_JSON",
     "ADV_REPLAY_LAST",
+    "PRD_INVENTORY_STATUS",
 }
 
 
@@ -49,4 +54,4 @@ def test_templates_v2_coverage_ids_present() -> None:
 def test_templates_v2_categories_present() -> None:
     catalog = load_template_catalog()
     categories = set(catalog.list_categories())
-    assert {"reports", "orders", "team", "systems", "advanced"}.issubset(categories)
+    assert {"reports", "orders", "team", "systems", "advanced", "products"}.issubset(categories)

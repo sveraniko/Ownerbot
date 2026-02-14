@@ -1,0 +1,11 @@
+template_id: PRD_INVENTORY_STATUS
+category: products
+title: Диагностика каталога
+button_text: Диагностика
+kind: REPORT
+tool_name: inventory_status
+order: 60
+default_payload:
+  low_stock_lte: 5
+  limit: 20
+inputs: []

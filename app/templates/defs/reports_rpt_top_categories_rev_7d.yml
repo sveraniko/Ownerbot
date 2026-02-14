@@ -1,0 +1,14 @@
+template_id: RPT_TOP_CATEGORIES_30D
+category: reports
+title: Топ категорий (выручка 7д)
+button_text: Топ категорий
+kind: REPORT
+tool_name: top_products
+order: 150
+default_payload:
+  days: 7
+  metric: revenue
+  direction: top
+  group_by: category
+  limit: 10
+inputs: []

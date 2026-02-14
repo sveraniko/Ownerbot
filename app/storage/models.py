@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, date
 
-from sqlalchemy import Date, DateTime, Integer, String, Numeric, Text, func, Boolean
+from sqlalchemy import Date, DateTime, Integer, String, Numeric, Text, func, Boolean, Index
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -74,4 +74,40 @@ class OwnerbotDemoChatThread(Base):
     open: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=True)
     last_customer_message_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_manager_reply_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class OwnerbotDemoProduct(Base):
+    __tablename__ = "ownerbot_demo_products"
+    __table_args__ = (
+        Index("idx_ownerbot_demo_products_category", "category"),
+        Index("idx_ownerbot_demo_products_published", "published"),
+        Index("idx_ownerbot_demo_products_stock_qty", "stock_qty"),
+    )
+
+    product_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    category: Mapped[str] = mapped_column(String(64), nullable=False)
+    price: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    currency: Mapped[str] = mapped_column(String(8), nullable=False)
+    stock_qty: Mapped[int] = mapped_column(Integer, nullable=False)
+    has_photo: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=True)
+    published: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class OwnerbotDemoOrderItem(Base):
+    __tablename__ = "ownerbot_demo_order_items"
+    __table_args__ = (
+        Index("idx_ownerbot_demo_order_items_order_id", "order_id"),
+        Index("idx_ownerbot_demo_order_items_product_id", "product_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    order_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    product_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    qty: Mapped[int] = mapped_column(Integer, nullable=False)
+    unit_price: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    currency: Mapped[str] = mapped_column(String(8), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

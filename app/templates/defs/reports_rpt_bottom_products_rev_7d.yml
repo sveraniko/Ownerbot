@@ -1,0 +1,14 @@
+template_id: RPT_BOTTOM_PRODUCTS_7D
+category: reports
+title: Анти-топ товаров (выручка 7д)
+button_text: Анти-топ товаров
+kind: REPORT
+tool_name: top_products
+order: 140
+default_payload:
+  days: 7
+  metric: revenue
+  direction: bottom
+  group_by: product
+  limit: 10
+inputs: []

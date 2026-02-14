@@ -40,6 +40,10 @@
 - `revenue_trend` — payload: `days`, `end_day?`; output: series + totals + delta_vs_prev_window.
 - `order_detail` — payload: `order_id`; output: order fields (status, amount, customer, timestamps).
 - `chats_unanswered` — payload: `limit?`; output: count + threads with last message timestamps.
+- `kpi_compare` — payload: `preset(wow|mom|custom)`, `days?`, `a_start/a_end/b_start/b_end?`; output: window totals + delta abs/pct + AOV compare.
+- `team_queue_summary` — payload: `{}`; output: queue SLA summary (2h/6h/24h), top overdue threads, recommendation.
+- `top_products` — payload: `days`, `metric(revenue|qty)`, `direction(top|bottom)`, `group_by(product|category)`, `limit`; output: ranked rows + totals for paid orders only.
+- `inventory_status` — payload: `low_stock_lte`, `limit`; output: counts/lists for out_of_stock, low_stock, missing_photo, missing_price, unpublished.
 - `flag_order` (action) — payload: `order_id`, `reason?`, `dry_run?`; output:
   - dry_run: preview (`dry_run`, `will_update`, `note`)
   - commit: `order_id`, `flagged`, `reason`
@@ -63,8 +67,6 @@
 
 ### Stub (NOT_IMPLEMENTED)
 - `funnel_snapshot`
-- `top_products`
-- `inventory_status`
 - `refunds_anomalies`
 - `truststack_signals`
 - `create_coupon` (action, поддерживает dry_run payload)
