@@ -1,0 +1,10 @@
+template_id: DSC_TOP_USED
+category: discounts
+title: Топ использованных купонов
+button_text: Топ купонов
+kind: REPORT
+tool_name: coupons_top_used
+order: 51
+default_payload:
+  limit: 5
+inputs: []

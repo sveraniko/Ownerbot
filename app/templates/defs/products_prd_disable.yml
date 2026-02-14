@@ -1,0 +1,13 @@
+template_id: PRD_DISABLE
+category: products
+title: Скрыть товары (по ID)
+button_text: Скрыть товары
+kind: ACTION
+tool_name: sis_products_publish
+order: 67
+default_payload:
+  target_status: ARCHIVED
+inputs:
+  - key: product_ids
+    prompt: Введи ID товаров через запятую/пробел/перенос.
+    parser: ids

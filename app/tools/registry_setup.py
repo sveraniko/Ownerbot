@@ -14,6 +14,8 @@ from app.tools.impl import (
     truststack_signals,
     create_coupon,
     adjust_price,
+    coupons_status,
+    coupons_top_used,
     notify_team,
     pause_campaign,
     flag_order,
@@ -50,8 +52,10 @@ def build_registry() -> ToolRegistry:
     registry.register("inventory_status", "1.1", inventory_status.Payload, inventory_status.handle, is_stub=False)
     registry.register("refunds_anomalies", "1.0", refunds_anomalies.Payload, refunds_anomalies.handle, is_stub=True)
     registry.register("truststack_signals", "1.0", truststack_signals.Payload, truststack_signals.handle, is_stub=True)
-    registry.register("create_coupon", "1.0", create_coupon.Payload, create_coupon.handle, is_stub=True, kind="action")
-    registry.register("adjust_price", "1.0", adjust_price.Payload, adjust_price.handle, is_stub=True, kind="action")
+    registry.register("create_coupon", "1.0", create_coupon.Payload, create_coupon.handle, is_stub=False, kind="action")
+    registry.register("adjust_price", "1.0", adjust_price.Payload, adjust_price.handle, is_stub=False, kind="action")
+    registry.register("coupons_status", "1.0", coupons_status.Payload, coupons_status.handle, is_stub=False)
+    registry.register("coupons_top_used", "1.0", coupons_top_used.Payload, coupons_top_used.handle, is_stub=False)
     registry.register("notify_team", "1.0", notify_team.Payload, notify_team.handle, is_stub=False, kind="action")
     registry.register("pause_campaign", "1.0", pause_campaign.Payload, pause_campaign.handle, is_stub=True, kind="action")
     registry.register("flag_order", "1.0", flag_order.Payload, flag_order.handle, kind="action")

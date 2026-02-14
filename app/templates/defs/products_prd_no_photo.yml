@@ -1,0 +1,12 @@
+template_id: PRD_NO_PHOTO
+category: products
+title: Товары без фото
+button_text: Без фото
+kind: REPORT
+tool_name: inventory_status
+order: 61
+default_payload:
+  section: missing_photo
+  low_stock_lte: 5
+  limit: 20
+inputs: []

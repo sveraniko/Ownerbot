@@ -1,0 +1,23 @@
+template_id: PRD_UPDATE_PRICE
+category: products
+title: Обновить цену товара
+button_text: Обновить цену
+kind: ACTION
+tool_name: adjust_price
+order: 68
+default_payload:
+  mode: set
+  rounding: none
+inputs:
+  - key: product_ids
+    prompt: Введи ID товаров через запятую/пробел/перенос.
+    parser: ids
+  - key: mode
+    prompt: "Режим изменения: set | delta_percent | delta_abs"
+    parser: str
+  - key: value
+    prompt: Значение изменения (число)
+    parser: str
+  - key: rounding
+    prompt: "Округление: none | int | 0.5 | 0.99"
+    parser: str

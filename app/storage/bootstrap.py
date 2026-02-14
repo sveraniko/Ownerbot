@@ -17,34 +17,35 @@ from app.storage.models import (
     OwnerbotDemoOrder,
     OwnerbotDemoOrderItem,
     OwnerbotDemoProduct,
+    OwnerbotDemoCoupon,
 )
 
 
 _PRODUCT_SEED = [
-    ("PRD-001", "Тайтсы Core Black", "Тайтсы", 39.90, 20, True, True),
-    ("PRD-002", "Тайтсы Motion Grey", "Тайтсы", 42.50, 5, True, True),
-    ("PRD-003", "Тайтсы Zero Stock", "Тайтсы", 37.00, 0, True, True),
-    ("PRD-004", "Тайтсы Draft", "Тайтсы", 41.00, 2, False, False),
-    ("PRD-005", "Топ Breeze White", "Топы", 24.90, 20, True, True),
-    ("PRD-006", "Топ Breeze Mint", "Топы", 0.0, 5, True, True),
-    ("PRD-007", "Топ Active Noir", "Топы", 28.00, 2, False, True),
-    ("PRD-008", "Топ Archive", "Топы", 21.00, 0, True, False),
-    ("PRD-009", "Худи Urban Sand", "Худи", 59.90, 20, True, True),
-    ("PRD-010", "Худи Urban Coal", "Худи", 62.00, 5, True, True),
-    ("PRD-011", "Худи Lite", "Худи", 54.00, 2, False, True),
-    ("PRD-012", "Худи Proto", "Худи", 0.0, 0, True, False),
-    ("PRD-013", "Аксессуар Bottle", "Аксессуары", 14.90, 20, True, True),
-    ("PRD-014", "Аксессуар Bag", "Аксессуары", 19.90, 5, True, True),
-    ("PRD-015", "Аксессуар Belt", "Аксессуары", 17.00, 2, False, True),
-    ("PRD-016", "Аксессуар Clip", "Аксессуары", 13.00, 0, True, True),
-    ("PRD-017", "Куртка Storm", "Верхняя одежда", 89.00, 5, True, True),
-    ("PRD-018", "Куртка Breeze", "Верхняя одежда", 0.0, 2, True, True),
-    ("PRD-019", "Куртка Lab", "Верхняя одежда", 79.00, 0, False, False),
-    ("PRD-020", "Куртка Urban", "Верхняя одежда", 85.00, 20, True, True),
-    ("PRD-021", "Носки Core", "Базовые", 9.90, 20, True, True),
-    ("PRD-022", "Носки Flex", "Базовые", 8.90, 5, True, True),
-    ("PRD-023", "Носки Sample", "Базовые", 0.0, 2, False, True),
-    ("PRD-024", "Носки Hidden", "Базовые", 7.50, 0, True, False),
+    ("PRD-001", "Тайтсы Core Black", "Тайтсы", 39.90, 20, True, True, True, False),
+    ("PRD-002", "Тайтсы Motion Grey", "Тайтсы", 42.50, 5, True, True, True, False),
+    ("PRD-003", "Тайтсы Zero Stock", "Тайтсы", 37.00, 0, True, True, True, False),
+    ("PRD-004", "Тайтсы Draft", "Тайтсы", 41.00, 2, False, False, False, True),
+    ("PRD-005", "Топ Breeze White", "Топы", 24.90, 20, True, True, True, False),
+    ("PRD-006", "Топ Breeze Mint", "Топы", 0.0, 5, True, True, False, False),
+    ("PRD-007", "Топ Active Noir", "Топы", 28.00, 2, False, True, True, True),
+    ("PRD-008", "Топ Archive", "Топы", 21.00, 0, True, False, False, False),
+    ("PRD-009", "Худи Urban Sand", "Худи", 59.90, 20, True, True, True, False),
+    ("PRD-010", "Худи Urban Coal", "Худи", 62.00, 5, True, True, False, False),
+    ("PRD-011", "Худи Lite", "Худи", 54.00, 2, False, True, True, True),
+    ("PRD-012", "Худи Proto", "Худи", 0.0, 0, True, False, True, False),
+    ("PRD-013", "Аксессуар Bottle", "Аксессуары", 14.90, 20, True, True, True, False),
+    ("PRD-014", "Аксессуар Bag", "Аксессуары", 19.90, 5, True, True, False, False),
+    ("PRD-015", "Аксессуар Belt", "Аксессуары", 17.00, 2, False, True, True, False),
+    ("PRD-016", "Аксессуар Clip", "Аксессуары", 13.00, 0, True, True, True, True),
+    ("PRD-017", "Куртка Storm", "Верхняя одежда", 89.00, 5, True, True, True, False),
+    ("PRD-018", "Куртка Breeze", "Верхняя одежда", 0.0, 2, True, True, False, False),
+    ("PRD-019", "Куртка Lab", "Верхняя одежда", 79.00, 0, False, False, True, True),
+    ("PRD-020", "Куртка Urban", "Верхняя одежда", 85.00, 20, True, True, True, False),
+    ("PRD-021", "Носки Core", "Базовые", 9.90, 20, True, True, True, False),
+    ("PRD-022", "Носки Flex", "Базовые", 8.90, 5, True, True, True, False),
+    ("PRD-023", "Носки Sample", "Базовые", 0.0, 2, False, True, False, True),
+    ("PRD-024", "Носки Hidden", "Базовые", 7.50, 0, True, False, True, False),
 ]
 
 
@@ -55,7 +56,7 @@ def _build_order_items(now, paid_order_ids: list[str]) -> list[dict[str, object]
         item_count = (idx % 4) + 1
         for item_offset in range(item_count):
             product_idx = (idx * 3 + item_offset * 5) % len(product_ids)
-            product_id, _title, _category, price, _stock, _has_photo, _published = _PRODUCT_SEED[product_idx]
+            product_id, _title, _category, price, _stock, _has_photo, _published, _has_video, _return_flagged = _PRODUCT_SEED[product_idx]
             qty = ((idx + item_offset) % 3) + 1
             unit_price = price if price > 0 else float(11 + idx + item_offset)
             rows.append(
@@ -119,6 +120,7 @@ async def seed_demo_data() -> None:
                 "status": "paid",
                 "amount": 89.50,
                 "customer_phone": "+491700000002",
+                "coupon_code": "WELCOME10",
                 "payment_status": "paid",
                 "paid_at": now - timedelta(hours=10),
                 "shipping_status": "pending",
@@ -185,6 +187,7 @@ async def seed_demo_data() -> None:
                 "status": "paid",
                 "amount": 95.25,
                 "customer_phone": "+491700000009",
+                "coupon_code": "WELCOME10",
                 "payment_status": "paid",
                 "paid_at": now - timedelta(hours=3),
                 "shipping_status": "pending",
@@ -206,6 +209,7 @@ async def seed_demo_data() -> None:
                 amount=order_data["amount"],
                 currency="EUR",
                 customer_id=f"cust_{index + 1:03d}",
+                coupon_code=order_data.get("coupon_code"),
                 customer_phone=order_data.get("customer_phone"),
                 payment_status=order_data.get("payment_status"),
                 paid_at=order_data.get("paid_at"),
@@ -231,9 +235,11 @@ async def seed_demo_data() -> None:
                 currency="EUR",
                 stock_qty=stock_qty,
                 has_photo=has_photo,
+                has_video=has_video,
+                return_flagged=return_flagged,
                 published=published,
             )
-            for product_id, title, category, price, stock_qty, has_photo, published in _PRODUCT_SEED
+            for product_id, title, category, price, stock_qty, has_photo, published, has_video, return_flagged in _PRODUCT_SEED
             if product_id not in existing_product_ids
         ]
 
@@ -260,6 +266,29 @@ async def seed_demo_data() -> None:
                     created_at=item["created_at"],
                 )
             )
+
+        existing_coupons = await session.execute(select(OwnerbotDemoCoupon.code))
+        existing_coupon_codes = {row[0] for row in existing_coupons.all()}
+        coupon_seeds = [
+            {"code": "WELCOME10", "percent_off": 10, "amount_off": None, "active": True, "max_uses": 200, "used_count": 34, "starts_at": now - timedelta(days=15), "ends_at": now + timedelta(days=45)},
+            {"code": "VIP25", "percent_off": 25, "amount_off": None, "active": True, "max_uses": 80, "used_count": 22, "starts_at": now - timedelta(days=5), "ends_at": now + timedelta(days=20)},
+            {"code": "SHIP5", "percent_off": None, "amount_off": 5.0, "active": True, "max_uses": 120, "used_count": 10, "starts_at": now - timedelta(days=2), "ends_at": now + timedelta(days=10)},
+            {"code": "SPRING15", "percent_off": 15, "amount_off": None, "active": False, "max_uses": 100, "used_count": 100, "starts_at": now - timedelta(days=90), "ends_at": now - timedelta(days=1)},
+        ]
+        coupons = [
+            OwnerbotDemoCoupon(
+                code=item["code"],
+                percent_off=item["percent_off"],
+                amount_off=item["amount_off"],
+                active=item["active"],
+                max_uses=item["max_uses"],
+                used_count=item["used_count"],
+                starts_at=item["starts_at"],
+                ends_at=item["ends_at"],
+            )
+            for item in coupon_seeds
+            if item["code"] not in existing_coupon_codes
+        ]
 
         existing_threads = await session.execute(select(OwnerbotDemoChatThread.thread_id))
         existing_thread_ids = {row[0] for row in existing_threads.all()}
@@ -314,4 +343,5 @@ async def seed_demo_data() -> None:
         session.add_all(threads)
         session.add_all(products)
         session.add_all(order_items)
+        session.add_all(coupons)
         await session.commit()

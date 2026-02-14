@@ -1,0 +1,14 @@
+template_id: PRD_SALES_RANK_30D
+category: products
+title: Рейтинг продаж за 30 дней
+button_text: Рейтинг 30 дней
+kind: REPORT
+tool_name: top_products
+order: 66
+default_payload:
+  days: 30
+  metric: qty
+  direction: top
+  group_by: product
+  limit: 10
+inputs: []

@@ -1,0 +1,12 @@
+template_id: PRD_NO_VIDEO
+category: products
+title: Товары без видео
+button_text: Без видео
+kind: REPORT
+tool_name: inventory_status
+order: 63
+default_payload:
+  section: missing_video
+  low_stock_lte: 5
+  limit: 20
+inputs: []

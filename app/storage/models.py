@@ -42,6 +42,7 @@ class OwnerbotDemoOrder(Base):
     currency: Mapped[str] = mapped_column(String(8), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     customer_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    coupon_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     customer_phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
     payment_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -92,6 +93,8 @@ class OwnerbotDemoProduct(Base):
     currency: Mapped[str] = mapped_column(String(8), nullable=False)
     stock_qty: Mapped[int] = mapped_column(Integer, nullable=False)
     has_photo: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=True)
+    has_video: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=True)
+    return_flagged: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=False)
     published: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -111,3 +114,19 @@ class OwnerbotDemoOrderItem(Base):
     unit_price: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
     currency: Mapped[str] = mapped_column(String(8), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class OwnerbotDemoCoupon(Base):
+    __tablename__ = "ownerbot_demo_coupons"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    percent_off: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    amount_off: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=True)
+    max_uses: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    used_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
