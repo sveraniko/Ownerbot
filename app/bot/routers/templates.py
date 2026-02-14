@@ -11,6 +11,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message, C
 from app.actions.confirm_flow import create_confirm_token
 from app.bot.keyboards.confirm import confirm_keyboard, confirm_keyboard_with_force
 from app.bot.services.action_force import requires_force_confirm
+from app.bot.services.action_preview import is_noop_preview
 from app.bot.services.tool_runner import run_tool
 from app.bot.ui.templates_keyboards import (
     build_templates_discounts_keyboard,
@@ -63,6 +64,36 @@ def _parse_stock_threshold(text: str) -> int:
     if value < 1 or value > 9999:
         raise ValueError("N должен быть в диапазоне 1..9999.")
     return value
+
+
+def _parse_settings_updates(text: str) -> dict:
+    raw = text.strip()
+    if not raw:
+        raise ValueError("Нужно передать хотя бы одно обновление настройки.")
+    if raw.startswith("{"):
+        obj = json.loads(raw)
+        if not isinstance(obj, dict):
+            raise ValueError("JSON должен быть объектом.")
+        return obj
+
+    result: dict[str, object] = {}
+    for chunk in [item.strip() for item in raw.split(",") if item.strip()]:
+        if "=" not in chunk:
+            raise ValueError("Формат: key=value, key2=value2")
+        key, value = [part.strip() for part in chunk.split("=", 1)]
+        lowered = value.lower()
+        if lowered in {"true", "false"}:
+            parsed: object = lowered == "true"
+        else:
+            try:
+                parsed = int(value)
+            except ValueError:
+                try:
+                    parsed = float(value)
+                except ValueError:
+                    parsed = value
+        result[key] = parsed
+    return result
 
 
 async def _set_state(user_id: int, state: dict) -> None:
@@ -226,6 +257,28 @@ async def tpl_bump_preset(callback_query: CallbackQuery) -> None:
     await callback_query.answer()
 
 
+
+
+@router.callback_query(F.data == "tpl:prices:fx:status")
+async def tpl_fx_status(callback_query: CallbackQuery) -> None:
+    await _run_template_action(callback_query.message, callback_query.from_user.id, "sis_fx_status", {})
+    await callback_query.answer()
+
+
+@router.callback_query(F.data == "tpl:prices:fx:auto")
+async def tpl_fx_auto(callback_query: CallbackQuery) -> None:
+    await _run_template_action(callback_query.message, callback_query.from_user.id, "sis_fx_reprice_auto", {"dry_run": True, "force": False, "refresh_snapshot": True})
+    await callback_query.answer()
+
+
+@router.callback_query(F.data == "tpl:prices:fx:settings")
+async def tpl_fx_settings(callback_query: CallbackQuery) -> None:
+    await _set_state(callback_query.from_user.id, {"tool": "sis_fx_settings_update", "step": "updates", "payload": {"dry_run": True}})
+    await callback_query.message.edit_text(
+        'Введи FX настройки JSON (например: {"reprice_schedule_mode":"interval","reprice_schedule_interval_hours":6}) или key=value через запятую.',
+    )
+    await callback_query.answer()
+
 @router.callback_query(F.data == "tpl:prices:fx")
 async def tpl_fx(callback_query: CallbackQuery) -> None:
     await _set_state(
@@ -351,6 +404,12 @@ async def templates_state_input(message: Message) -> None:
             await _clear_state(message.from_user.id)
             await _run_template_action(message, message.from_user.id, tool, payload)
             return
+
+        if tool == "sis_fx_settings_update" and step == "updates":
+            payload["updates"] = _parse_settings_updates(raw)
+            await _clear_state(message.from_user.id)
+            await _run_template_action(message, message.from_user.id, tool, payload)
+            return
     except ValueError as exc:
         await message.answer(str(exc))
         return
@@ -386,6 +445,10 @@ async def _run_template_action(message: Message, owner_user_id: int, tool_name: 
     )
 
     if payload.get("dry_run") is True and response.status == "ok":
+        if is_noop_preview(response):
+            source_tag = detect_source_tag(response)
+            await message.answer(format_tool_response(response, source_tag=source_tag))
+            return
         payload_commit = dict(payload)
         payload_commit["dry_run"] = False
         confirm_payload = {

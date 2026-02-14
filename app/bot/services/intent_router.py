@@ -54,6 +54,17 @@ def route_intent(text: str) -> IntentResult:
     if weekly_pdf_command_match:
         return IntentResult(tool="kpi_snapshot", payload={}, presentation={"kind": "weekly_pdf"})
 
+
+    fx_status_phrases = ["fx статус", "что по курсу", "курс валют"]
+    if "курс" in normalized or any(phrase in normalized for phrase in fx_status_phrases):
+        return IntentResult(tool="sis_fx_status", payload={})
+
+    if "обнови цены принудительно" in normalized or "форс пересчет" in normalized:
+        return IntentResult(tool="sis_fx_reprice_auto", payload={"dry_run": True, "force": True, "refresh_snapshot": True})
+
+    if "обнови цены" in normalized or "пересчитай цены" in normalized or "fx пересчет" in normalized:
+        return IntentResult(tool="sis_fx_reprice_auto", payload={"dry_run": True, "force": False, "refresh_snapshot": True})
+
     # 1) notify_team
     if normalized.startswith("/notify"):
         message = re.sub(r"^/notify(?:@\w+)?\s*", "", text, flags=re.IGNORECASE).strip()

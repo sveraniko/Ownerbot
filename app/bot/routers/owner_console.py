@@ -16,6 +16,7 @@ from app.asr.errors import ASRError
 from app.asr.factory import get_asr_provider
 from app.bot.keyboards.confirm import confirm_keyboard, confirm_keyboard_with_force
 from app.bot.services.action_force import requires_force_confirm
+from app.bot.services.action_preview import is_noop_preview
 from app.bot.services.intent_router import route_intent
 from app.bot.services.retrospective import write_retrospective_event
 from app.bot.services.tool_runner import run_tool
@@ -427,6 +428,20 @@ async def handle_tool_call(message: Message, text: str, *, input_kind: str = "te
                 artifacts=artifacts,
             )
             return
+        if is_noop_preview(response):
+            await message.answer(format_tool_response(response, source_tag=source_tag if "source_tag" in locals() else None))
+            await write_retrospective_event(
+                correlation_id=correlation_id,
+                input_kind=input_kind,
+                text=text,
+                intent_source=intent_source,
+                llm_confidence=llm_confidence,
+                tool_name=intent.tool,
+                response=response,
+                artifacts=artifacts,
+            )
+            return
+
         payload_commit = dict(intent.payload)
         payload_commit["dry_run"] = False
         confirm_payload = {

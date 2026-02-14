@@ -86,6 +86,8 @@ async def run_tool(
         kwargs["actor"] = actor
     if "bot" in params:
         kwargs["bot"] = bot
+    if "idempotency_key" in params:
+        kwargs["idempotency_key"] = idempotency_key
 
     async with session_factory() as session:
         response = await tool.handler(payload, correlation_id, session, **kwargs)

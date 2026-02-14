@@ -60,6 +60,24 @@ Otherwise → **403**.
 
 ---
 
+## 3.1 Response envelope (new)
+
+SIS actions may return envelope:
+
+```json
+{
+  "ok": true,
+  "status": 200,
+  "correlation_id": "...",
+  "request_hash": "...",
+  "warnings": [],
+  "data": {},
+  "error": null
+}
+```
+
+OwnerBot should support both envelope and legacy plain JSON body for backward compatibility.
+
 ## 4) Common request fields
 
 ### 4.1 `shop_id`
@@ -283,3 +301,75 @@ Optional v1.1 upgrades:
 ## 11) Appendix: “As Implemented” reference
 
 See: `docs/OWNERBOT_SIS_ACTIONS_CONTRACT_IMPLEMENTED.md`
+
+
+### 6.7 FX Status
+
+**GET** `/fx/status`
+
+Returns current FX pipeline status/snapshot.
+
+---
+
+### 6.8 FX Reprice Auto — Preview
+
+**POST** `/fx/preview`
+
+Preview auto-reprice by current FX settings.
+
+#### Required
+- `actor_tg_id`
+
+#### Optional
+- `force_apply`
+- `refresh_snapshot`
+
+#### Envelope (v1.1 compatibility)
+```json
+{
+  "ok": true,
+  "status": 200,
+  "correlation_id": "...",
+  "request_hash": "...",
+  "warnings": [],
+  "data": {"would_apply": true, "status": "preview"},
+  "error": null
+}
+```
+
+No-op semantics: if `data.would_apply=false` OR `data.status in {"skipped","noop","no_change"}`, OwnerBot MUST NOT show confirm and MUST NOT call apply.
+
+---
+
+### 6.9 FX Reprice Auto — Apply
+
+**POST** `/fx/apply`
+
+Apply auto-reprice by current FX settings.
+
+#### Required headers
+- `Idempotency-Key: <ownerbot-idempotency-key>`
+
+Apply must be idempotent end-to-end by this key.
+
+---
+
+### 6.10 FX Settings Update
+
+**PATCH** `/fx/settings`
+
+Update FX schedule/threshold/provider settings.
+
+#### Required
+- `actor_tg_id`
+- `updates` object
+
+#### Supported keys (B3)
+- `reprice_schedule_mode`
+- `reprice_schedule_interval_hours`
+- `reprice_schedule_notify_on_success`
+- `reprice_schedule_notify_on_failure`
+- `min_rate_delta_abs`
+- `min_rate_delta_percent`
+- `min_apply_cooldown_hours`
+- `provider`
