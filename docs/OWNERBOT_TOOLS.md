@@ -36,7 +36,7 @@
 ## 3) Tools v1
 ### Реализовано (DEMO)
 - `kpi_snapshot` — payload: `day?`; output: day, revenue_gross/net, orders_paid/created, aov.
-- `orders_search` — payload: `status?`, `limit?`; output: count + orders list.
+- `orders_search` — payload: `q?`, `status?`, `preset? (stuck|late_ship|payment_issues)`, `flagged?`, `limit?`, `since_hours?`; output: `count`, `items`, `applied_filters`.
 - `revenue_trend` — payload: `days`, `end_day?`; output: series + totals + delta_vs_prev_window.
 - `order_detail` — payload: `order_id`; output: order fields (status, amount, customer, timestamps).
 - `chats_unanswered` — payload: `limit?`; output: count + threads with last message timestamps.

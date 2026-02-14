@@ -6,6 +6,6 @@ kind: REPORT
 tool_name: orders_search
 order: 70
 default_payload:
-  status: pending
+  preset: payment_issues
   limit: 20
 inputs: []

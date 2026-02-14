@@ -18,3 +18,5 @@ inputs:
         value: pending
       - text: stuck
         value: stuck
+      - text: failed
+        value: failed

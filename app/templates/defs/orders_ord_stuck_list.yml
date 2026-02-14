@@ -6,6 +6,6 @@ kind: REPORT
 tool_name: orders_search
 order: 50
 default_payload:
-  status: stuck
+  preset: stuck
   limit: 20
 inputs: []
