@@ -1,11 +1,25 @@
 from __future__ import annotations
 
+import hashlib
+import json
+
 from app.core.settings import Settings
 from app.llm.provider_mock import MockPlanner
 from app.llm.provider_openai import OpenAIPlanner
+from app.llm.prompts import build_llm_intent_prompt
 from app.llm.schema import LLMIntent
 from app.tools.registry import ToolRegistry
 
+
+
+def _deterministic_idempotency_key(tool_name: str, payload: dict, text: str) -> str:
+    source = {
+        "tool": tool_name,
+        "text": text.strip().lower(),
+        "payload": {k: v for k, v in payload.items() if k != "idempotency_key"},
+    }
+    digest = hashlib.sha256(json.dumps(source, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+    return f"llm-{digest[:32]}"
 
 async def llm_plan_intent(text: str, settings: Settings, registry: ToolRegistry) -> tuple[LLMIntent, str]:
     provider_name = settings.llm_provider.upper().strip()
@@ -20,7 +34,8 @@ async def llm_plan_intent(text: str, settings: Settings, registry: ToolRegistry)
     else:
         return LLMIntent(tool=None, payload={}, error_message="LLM провайдер не настроен", confidence=0.0), provider_name
 
-    planned = await provider.plan(text)
+    prompt = build_llm_intent_prompt(registry)
+    planned = await provider.plan(text, prompt=prompt)
     allowed_tools = {item["name"] for item in registry.list_tools()}
     allowed_tools.add("weekly_preset")
     if planned.tool is not None and planned.tool not in allowed_tools:
@@ -36,6 +51,7 @@ async def llm_plan_intent(text: str, settings: Settings, registry: ToolRegistry)
             return LLMIntent(tool=None, payload={}, error_message="Action tool is not allowed", confidence=planned.confidence), provider_label
         payload = dict(planned.payload)
         payload["dry_run"] = True
+        payload["idempotency_key"] = _deterministic_idempotency_key(planned.tool, payload, text)
         planned = planned.model_copy(update={"payload": payload})
 
     return planned, provider_label

@@ -5,6 +5,10 @@ import pytest
 from app.tools.contracts import ToolProvenance, ToolResponse, ToolWarning
 
 
+async def _redis():
+    return SimpleNamespace()
+
+
 class _DummyMessage:
     def __init__(self) -> None:
         self.calls = []
@@ -42,6 +46,7 @@ async def test_template_flow_dry_run_creates_force_confirm_buttons(monkeypatch) 
     monkeypatch.setattr("app.bot.routers.templates.choose_data_mode", _choose)
     monkeypatch.setattr("app.bot.routers.templates.run_tool", _run_tool)
     monkeypatch.setattr("app.bot.routers.templates.create_confirm_token", _create_token)
+    monkeypatch.setattr("app.bot.routers.templates.get_redis", _redis)
 
     msg = _DummyMessage()
     await templates._run_template_action(msg, 42, "sis_fx_reprice", {"dry_run": True, "rate_set_id": "h", "input_currency": "USD", "shop_currency": "EUR"})
@@ -76,6 +81,7 @@ async def test_template_flow_dry_run_default_confirm_button(monkeypatch) -> None
     monkeypatch.setattr("app.bot.routers.templates.choose_data_mode", _choose)
     monkeypatch.setattr("app.bot.routers.templates.run_tool", _run_tool)
     monkeypatch.setattr("app.bot.routers.templates.create_confirm_token", _create_token)
+    monkeypatch.setattr("app.bot.routers.templates.get_redis", _redis)
 
     msg = _DummyMessage()
     await templates._run_template_action(msg, 42, "sis_prices_bump", {"dry_run": True, "bump_percent": "10"})

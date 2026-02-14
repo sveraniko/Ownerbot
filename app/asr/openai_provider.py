@@ -24,6 +24,8 @@ class OpenAIASRProvider(ASRProvider):
         url = f"{self._settings.openai_base_url.rstrip('/')}/v1/audio/transcriptions"
         headers = {"Authorization": f"Bearer {self._settings.openai_api_key}"}
         data = {"model": self._settings.openai_asr_model, "response_format": "json"}
+        if self._settings.asr_prompt:
+            data["prompt"] = self._settings.asr_prompt
         files = {"file": (f"voice.{ext}", converted_bytes, mime_type)}
         timeout = httpx.Timeout(self._settings.asr_timeout_sec)
 

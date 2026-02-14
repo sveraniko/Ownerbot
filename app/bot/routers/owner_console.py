@@ -10,16 +10,22 @@ from aiogram.filters import Command
 from aiogram.types import BufferedInputFile, Message
 
 from app.actions.confirm_flow import create_confirm_token
+from app.asr.audio_convert import convert_ogg_to_wav
 from app.asr.cache import get_or_transcribe
 from app.asr.errors import ASRError
 from app.asr.factory import get_asr_provider
-from app.asr.telegram_voice import download_voice_bytes
 from app.bot.keyboards.confirm import confirm_keyboard, confirm_keyboard_with_force
 from app.bot.services.action_force import requires_force_confirm
 from app.bot.services.intent_router import route_intent
 from app.bot.services.retrospective import write_retrospective_event
 from app.bot.services.tool_runner import run_tool
 from app.bot.ui.formatting import detect_source_tag, format_tool_response
+from app.bot.ui.templates_keyboards import (
+    build_templates_discounts_keyboard,
+    build_templates_main_keyboard,
+    build_templates_prices_keyboard,
+    build_templates_products_keyboard,
+)
 from app.core.contracts import CANCEL_CB_PREFIX, CONFIRM_CB_PREFIX
 from app.core.logging import get_correlation_id
 from app.core.redis import get_redis
@@ -296,7 +302,7 @@ async def handle_tool_call(message: Message, text: str, *, input_kind: str = "te
         return
 
     is_action = tool.kind == "action"
-    idempotency_key = str(uuid.uuid4()) if is_action else get_correlation_id()
+    idempotency_key = str(intent.payload.get("idempotency_key") or uuid.uuid4()) if is_action else get_correlation_id()
     correlation_id = get_correlation_id()
     actor = ToolActor(owner_user_id=message.from_user.id)
     tenant = ToolTenant(
@@ -477,6 +483,51 @@ async def handle_tool_call(message: Message, text: str, *, input_kind: str = "te
     )
 
 
+
+
+
+def _truncate_text(text: str, limit: int = 500) -> str:
+    compact = text.strip()
+    if len(compact) <= limit:
+        return compact
+    return compact[: limit - 1] + "…"
+
+
+def _voice_templates_route(transcript: str) -> str | None:
+    normalized = transcript.lower()
+    if any(token in normalized for token in ["шаблоны цены", "шаблон цены", "цены", "prices"]):
+        return "prices"
+    if any(token in normalized for token in ["шаблоны товары", "шаблон товары", "товары", "products"]):
+        return "products"
+    if any(token in normalized for token in ["шаблоны скидки", "шаблон скидки", "скидки", "discounts"]):
+        return "discounts"
+    if any(token in normalized for token in ["шаблоны", "пресеты", "templates"]):
+        return "main"
+    return None
+
+
+async def _handle_voice_templates_shortcut(message: Message, transcript: str) -> bool:
+    route = _voice_templates_route(transcript)
+    if route is None:
+        return False
+
+    if route == "prices":
+        text = "Шаблоны → Цены"
+        markup = build_templates_prices_keyboard()
+    elif route == "products":
+        text = "Шаблоны → Товары"
+        markup = build_templates_products_keyboard()
+    elif route == "discounts":
+        text = "Шаблоны → Скидки"
+        markup = build_templates_discounts_keyboard()
+    else:
+        text = "Шаблоны"
+        markup = build_templates_main_keyboard()
+
+    await write_audit_event("voice.route", {"selected_path": "templates", "template_menu": route})
+    await message.answer(text, reply_markup=markup)
+    return True
+
 @router.message(Command("flag"))
 async def handle_flag_command(message: Message) -> None:
     if message.text is None:
@@ -496,12 +547,46 @@ async def handle_text(message: Message) -> None:
 
 
 @router.message(F.voice)
+@router.message(F.audio)
+@router.message(F.document)
 async def handle_voice(message: Message) -> None:
-    if message.voice is None:
+    if message.voice is None and message.audio is None and message.document is None:
         return
-    redis_client = await get_redis()
-    audio_bytes = await download_voice_bytes(message.bot, message.voice.file_id)
+
     settings = get_settings()
+    redis_client = await get_redis()
+
+    attachment = message.voice or message.audio or message.document
+    if attachment is None:
+        return
+
+    if getattr(attachment, "duration", 0) and int(getattr(attachment, "duration", 0)) > settings.asr_max_seconds:
+        await message.answer("Слишком длинное аудио. Пришли запись короче.")
+        return
+
+    mime_type = getattr(attachment, "mime_type", None)
+    if message.document is not None and mime_type and not mime_type.startswith("audio/"):
+        return
+    file_id = getattr(attachment, "file_id", None)
+    if file_id is None:
+        await message.answer("Не удалось прочитать аудио. Попробуй ещё раз.")
+        return
+
+    file = await message.bot.get_file(file_id)
+    file_stream = await message.bot.download_file(file.file_path)
+    audio_bytes = await file_stream.read()
+
+    if len(audio_bytes) > settings.asr_max_bytes:
+        await message.answer("Слишком тяжёлое аудио. Пришли файл поменьше.")
+        return
+
+    if mime_type in {"audio/ogg", "audio/opus"} and settings.asr_convert_voice_ogg_to_wav:
+        try:
+            audio_bytes = convert_ogg_to_wav(audio_bytes)
+        except Exception:
+            await message.answer("Не удалось обработать OGG/OPUS. Попробуй другой формат.")
+            return
+
     provider_name = settings.asr_provider
     try:
         provider = get_asr_provider(settings)
@@ -510,15 +595,16 @@ async def handle_voice(message: Message) -> None:
         pass
 
     started = time.perf_counter()
-    await write_audit_event("asr_started", {"provider": provider_name})
+    await write_audit_event("voice.asr", {"stage": "started", "provider": provider_name, "bytes": len(audio_bytes)})
     try:
         provider = get_asr_provider(settings)
         provider_name = getattr(provider, "name", provider_name)
         result = await get_or_transcribe(redis_client, provider, audio_bytes)
     except ASRError as exc:
         await write_audit_event(
-            "asr_failed",
+            "voice.asr",
             {
+                "stage": "failed",
                 "code": exc.code,
                 "provider": provider_name,
                 "latency_ms": int((time.perf_counter() - started) * 1000),
@@ -528,8 +614,9 @@ async def handle_voice(message: Message) -> None:
         return
     except Exception:
         await write_audit_event(
-            "asr_failed",
+            "voice.asr",
             {
+                "stage": "failed",
                 "code": "ASR_FAILED",
                 "provider": provider_name,
                 "latency_ms": int((time.perf_counter() - started) * 1000),
@@ -538,24 +625,28 @@ async def handle_voice(message: Message) -> None:
         await message.answer("ASR недоступен. Напиши запрос текстом.")
         return
 
+    transcript_short = _truncate_text(result.text)
     await write_audit_event(
-        "asr_finished",
+        "voice.asr",
         {
+            "stage": "finished",
             "provider": provider_name,
             "latency_ms": int((time.perf_counter() - started) * 1000),
             "confidence": result.confidence,
+            "bytes": len(audio_bytes),
+            "duration": int(getattr(attachment, "duration", 0) or 0),
+            "text": transcript_short,
         },
     )
-    await write_audit_event(
-        "voice_transcribed",
-        {"confidence": result.confidence, "text": result.text},
-    )
+    await message.answer(f'🎙️ Распознал: "{_truncate_text(result.text, limit=160)}"')
 
-    low_conf_key = f"voice_low_conf:{message.from_user.id}"
+    if await _handle_voice_templates_shortcut(message, result.text):
+        return
+
     if result.confidence < settings.asr_confidence_threshold:
-        low_conf = await redis_client.get(low_conf_key)
-        if not low_conf:
-            await redis_client.set(low_conf_key, "1", ex=300)
-            await message.answer("Не расслышал. Повтори голосом или напиши текстом.")
-            return
+        await write_audit_event("voice.route", {"selected_path": "none", "reason": "low_confidence"})
+        await message.answer(f'Плохое распознавание, повтори/скажи иначе. Текст: "{_truncate_text(result.text, limit=160)}"')
+        return
+
+    await write_audit_event("voice.route", {"selected_path": "tool"})
     await handle_tool_call(message, result.text, input_kind="voice")
