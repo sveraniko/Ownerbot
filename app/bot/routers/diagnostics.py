@@ -21,7 +21,10 @@ async def cmd_systems(message: Message) -> None:
         await message.answer("Diagnostics disabled by config.")
         return
 
-    redis = await get_redis()
+    try:
+        redis = await get_redis()
+    except Exception:
+        redis = None
     correlation_id = get_correlation_id()
     sis_client = SisClient(settings) if settings.sis_base_url else None
 
@@ -43,7 +46,10 @@ async def cmd_shadow_check(message: Message) -> None:
         await message.answer("Shadow check disabled by config.")
         return
 
-    redis = await get_redis()
+    try:
+        redis = await get_redis()
+    except Exception:
+        redis = None
     correlation_id = get_correlation_id()
     sis_client = SisClient(settings) if settings.sis_base_url else None
 

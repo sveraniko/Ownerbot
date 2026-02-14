@@ -9,6 +9,7 @@ from typing import Any
 from app.bot.services.tool_runner import run_tool
 from app.core.audit import write_audit_event
 from app.core.db import check_db
+from app.core.preflight import preflight_validate_settings
 from app.core.redis import check_redis
 from app.diagnostics.diff import DiffItem, collect_differences
 from app.tools.contracts import ToolActor, ToolResponse, ToolTenant
@@ -38,6 +39,23 @@ class SystemsReport:
     sis_error_code: str | None = None
     sis_contract_ok: bool | None = None
     sizebot_status: str = "disabled"
+    preflight_status: str = "OK"
+    preflight_codes: list[str] = field(default_factory=list)
+    asr_provider: str = "mock"
+    asr_convert_voice_ogg_to_wav: bool = True
+    asr_max_seconds: int = 0
+    asr_max_bytes: int = 0
+    asr_timeout_sec: int = 0
+    openai_key_present: bool = False
+    llm_provider: str = "OFF"
+    llm_timeout_seconds: int = 0
+    llm_allowed_action_tools: list[str] = field(default_factory=list)
+    sis_base_url_present: bool = False
+    sis_api_key_present: bool = False
+    sis_contract_check_enabled: bool = False
+    sizebot_check_enabled: bool = False
+    sizebot_base_url_present: bool = False
+    sizebot_api_key_present: bool = False
 
 
 @dataclass(frozen=True)
@@ -54,13 +72,7 @@ class ShadowReport:
 
 
 registry = build_registry()
-TENANT = ToolTenant(
-    project="OwnerBot",
-    shop_id="shop_001",
-    currency="EUR",
-    timezone="Europe/Berlin",
-    locale="ru-RU",
-)
+TENANT = ToolTenant(project="OwnerBot", shop_id="shop_001", currency="EUR", timezone="Europe/Berlin", locale="ru-RU")
 ACTOR = ToolActor(owner_user_id=0)
 
 
@@ -69,6 +81,24 @@ async def _safe_audit(event_type: str, payload: dict[str, Any], *, correlation_i
         await write_audit_event(event_type, payload, correlation_id=correlation_id)
     except Exception:
         return
+
+
+async def _resolve_mode_for_diagnostics(settings: Any, redis: Any) -> tuple[str, str | None, bool]:
+    redis_available = False
+    if redis is not None:
+        try:
+            redis_available = bool(await redis.ping())
+        except Exception:
+            redis_available = False
+
+    if redis_available:
+        try:
+            effective_mode, runtime_override = await resolve_effective_mode(settings=settings, redis=redis)
+            return effective_mode, runtime_override, True
+        except Exception:
+            return settings.upstream_mode, None, False
+
+    return settings.upstream_mode, None, False
 
 
 async def run_systems_check(ctx: DiagnosticsContext) -> SystemsReport:
@@ -84,11 +114,15 @@ async def run_systems_check(ctx: DiagnosticsContext) -> SystemsReport:
     except Exception:
         redis_ok = False
 
-    try:
-        effective_mode, runtime_override = await resolve_effective_mode(settings=ctx.settings, redis=ctx.redis)
-    except Exception:
-        effective_mode = ctx.settings.upstream_mode
-        runtime_override = None
+    effective_mode, runtime_override, redis_available_for_mode = await _resolve_mode_for_diagnostics(ctx.settings, ctx.redis)
+
+    preflight_report = preflight_validate_settings(
+        ctx.settings,
+        effective_mode=effective_mode,
+        runtime_override=runtime_override,
+        redis_available_for_mode=redis_available_for_mode,
+    )
+    preflight_status = "FAIL" if preflight_report.errors_count else ("WARN" if preflight_report.warnings_count else "OK")
 
     sis_status = "disabled"
     sis_latency_ms: int | None = None
@@ -111,10 +145,9 @@ async def run_systems_check(ctx: DiagnosticsContext) -> SystemsReport:
             sis_status = "unavailable"
             sis_error_code = ping_response.error.code if ping_response.error else "UNKNOWN"
 
+    sizebot_status = "disabled"
     if ctx.settings.sizebot_check_enabled:
         sizebot_status = "unavailable" if not ctx.settings.sizebot_base_url else "ok"
-    else:
-        sizebot_status = "disabled"
 
     report = SystemsReport(
         db_ok=db_ok,
@@ -127,6 +160,23 @@ async def run_systems_check(ctx: DiagnosticsContext) -> SystemsReport:
         sis_error_code=sis_error_code,
         sis_contract_ok=sis_contract_ok,
         sizebot_status=sizebot_status,
+        preflight_status=preflight_status,
+        preflight_codes=[item.code for item in preflight_report.items[:5]],
+        asr_provider=ctx.settings.asr_provider,
+        asr_convert_voice_ogg_to_wav=ctx.settings.asr_convert_voice_ogg_to_wav,
+        asr_max_seconds=ctx.settings.asr_max_seconds,
+        asr_max_bytes=ctx.settings.asr_max_bytes,
+        asr_timeout_sec=ctx.settings.asr_timeout_sec,
+        openai_key_present=bool(str(ctx.settings.openai_api_key or "").strip()),
+        llm_provider=ctx.settings.llm_provider,
+        llm_timeout_seconds=ctx.settings.llm_timeout_seconds,
+        llm_allowed_action_tools=list(ctx.settings.llm_allowed_action_tools),
+        sis_base_url_present=bool(str(ctx.settings.sis_base_url or "").strip()),
+        sis_api_key_present=bool(str(ctx.settings.sis_ownerbot_api_key or "").strip()),
+        sis_contract_check_enabled=ctx.settings.sis_contract_check_enabled,
+        sizebot_check_enabled=ctx.settings.sizebot_check_enabled,
+        sizebot_base_url_present=bool(str(ctx.settings.sizebot_base_url or "").strip()),
+        sizebot_api_key_present=bool(str(ctx.settings.sizebot_api_key or "").strip()),
     )
     await _safe_audit(
         "systems_check_finished",
@@ -136,6 +186,7 @@ async def run_systems_check(ctx: DiagnosticsContext) -> SystemsReport:
             "effective_mode": report.effective_mode,
             "sis_status": report.sis_status,
             "sizebot_status": report.sizebot_status,
+            "preflight_status": report.preflight_status,
         },
         correlation_id=ctx.correlation_id,
     )
@@ -219,13 +270,31 @@ def _preset_call(name: str) -> tuple[str, dict[str, Any]]:
 def format_systems_report(report: SystemsReport) -> str:
     db_icon = "✅" if report.db_ok else "❌"
     redis_icon = "✅" if report.redis_ok else "❌"
+    runtime_override = report.runtime_override or "None"
+    preflight_codes = ", ".join(report.preflight_codes) if report.preflight_codes else "none"
+
     lines = [
         f"OwnerBot: DB {db_icon} / Redis {redis_icon}",
-        f"Upstream: effective_mode={report.effective_mode} (override={report.runtime_override or 'None'})",
+        f"Upstream: configured={report.configured_mode}, effective={report.effective_mode}, runtime_override={runtime_override}",
+        (
+            "ASR: "
+            f"provider={report.asr_provider}, convert_ogg_to_wav={report.asr_convert_voice_ogg_to_wav}, "
+            f"max_seconds={report.asr_max_seconds}, max_bytes={report.asr_max_bytes}, "
+            f"timeout={report.asr_timeout_sec}s, openai_key_present={'yes' if report.openai_key_present else 'no'}"
+        ),
+        (
+            f"LLM: provider={report.llm_provider}, timeout={report.llm_timeout_seconds}s, "
+            f"allowed_action_tools={len(report.llm_allowed_action_tools)} [{', '.join(report.llm_allowed_action_tools) or 'none'}]"
+        ),
+        (
+            f"SIS cfg: base_url_present={'yes' if report.sis_base_url_present else 'no'}, "
+            f"api_key_present={'yes' if report.sis_api_key_present else 'no'}, "
+            f"contract_check_enabled={report.sis_contract_check_enabled}"
+        ),
     ]
 
     if report.sis_status == "disabled":
-        lines.append("SIS: disabled")
+        lines.append("SIS runtime: disabled")
     elif report.sis_status == "ok":
         contract = "n/a"
         if report.sis_contract_ok is True:
@@ -233,14 +302,21 @@ def format_systems_report(report: SystemsReport) -> str:
         elif report.sis_contract_ok is False:
             contract = "FAIL"
         latency = f" latency={report.sis_latency_ms}ms" if report.sis_latency_ms is not None else ""
-        lines.append(f"SIS: ping ✅{latency}, contract={contract}")
+        lines.append(f"SIS runtime: ping ✅{latency}, contract={contract}")
     elif report.sis_status == "degraded":
         latency = f" latency={report.sis_latency_ms}ms" if report.sis_latency_ms is not None else ""
-        lines.append(f"SIS: ping ⚠️{latency}, contract=FAIL ({report.sis_error_code or 'UNKNOWN'})")
+        lines.append(f"SIS runtime: ping ⚠️{latency}, contract=FAIL ({report.sis_error_code or 'UNKNOWN'})")
     else:
-        lines.append(f"SIS: UNAVAILABLE ({report.sis_error_code or 'UNKNOWN'})")
+        lines.append(f"SIS runtime: UNAVAILABLE ({report.sis_error_code or 'UNKNOWN'})")
 
-    lines.append(f"SizeBot: {report.sizebot_status}")
+    lines.append(
+        f"SizeBot: check_enabled={report.sizebot_check_enabled}, base_url_present={'yes' if report.sizebot_base_url_present else 'no'}, "
+        f"api_key_present={'yes' if report.sizebot_api_key_present else 'no'}, status={report.sizebot_status}"
+    )
+    suffix = f"Preflight: {report.preflight_status}; codes={preflight_codes}"
+    if report.preflight_status == "FAIL":
+        suffix += ". Fix env and restart."
+    lines.append(suffix)
     return "\n".join(lines)
 
 

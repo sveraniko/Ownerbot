@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     upstream_runtime_toggle_enabled: bool = Field(default=True, alias="UPSTREAM_RUNTIME_TOGGLE_ENABLED")
     upstream_redis_key: str = Field(default="ownerbot:upstream_mode", alias="UPSTREAM_REDIS_KEY")
     diagnostics_enabled: bool = Field(default=True, alias="DIAGNOSTICS_ENABLED")
+    preflight_fail_fast: bool = Field(default=True, alias="PREFLIGHT_FAIL_FAST")
     shadow_check_enabled: bool = Field(default=True, alias="SHADOW_CHECK_ENABLED")
     sis_contract_check_enabled: bool = Field(default=True, alias="SIS_CONTRACT_CHECK_ENABLED")
     sizebot_base_url: str = Field(default="", alias="SIZEBOT_BASE_URL")

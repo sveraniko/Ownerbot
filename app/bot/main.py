@@ -9,8 +9,11 @@ from app.bot.middlewares.correlation import CorrelationMiddleware
 from app.bot.middlewares.owner_gate import OwnerGateMiddleware
 from app.bot.routers import actions, diagnostics, owner_console, start, templates, upstream_control
 from app.core.logging import configure_logging
+from app.core.preflight import format_preflight_report, preflight_validate_settings
+from app.core.redis import get_redis
 from app.core.settings import get_settings
 from app.storage.bootstrap import run_migrations, seed_demo_data
+from app.upstream.selector import resolve_effective_mode
 
 logger = logging.getLogger(__name__)
 
@@ -37,9 +40,61 @@ async def on_startup() -> None:
     logger.info("startup_complete")
 
 
+async def _resolve_mode_for_preflight(settings) -> tuple[str, str | None, bool]:
+    try:
+        redis = await get_redis()
+    except Exception:
+        return settings.upstream_mode, None, False
+
+    try:
+        if not await redis.ping():
+            return settings.upstream_mode, None, False
+    except Exception:
+        return settings.upstream_mode, None, False
+
+    try:
+        effective_mode, runtime_override = await resolve_effective_mode(settings=settings, redis=redis)
+        return effective_mode, runtime_override, True
+    except Exception:
+        return settings.upstream_mode, None, False
+
+
 def main() -> None:
     settings = get_settings()
     configure_logging(settings.log_level)
+
+    effective_mode, runtime_override, redis_available_for_mode = asyncio.run(_resolve_mode_for_preflight(settings))
+    preflight_report = preflight_validate_settings(
+        settings,
+        effective_mode=effective_mode,
+        runtime_override=runtime_override,
+        redis_available_for_mode=redis_available_for_mode,
+    )
+    preflight_text = format_preflight_report(preflight_report)
+
+    if not preflight_report.ok and settings.preflight_fail_fast:
+        logger.error(
+            "preflight_failed",
+            extra={
+                "summary": preflight_text,
+                "codes": [item.code for item in preflight_report.items],
+                "errors": preflight_report.errors_count,
+                "warnings": preflight_report.warnings_count,
+            },
+        )
+        raise SystemExit(2)
+
+    log_method = logger.warning if preflight_report.warnings_count or not preflight_report.ok else logger.info
+    log_method(
+        "preflight_checked",
+        extra={
+            "summary": preflight_text,
+            "codes": [item.code for item in preflight_report.items],
+            "errors": preflight_report.errors_count,
+            "warnings": preflight_report.warnings_count,
+        },
+    )
+
     bot = Bot(token=settings.bot_token)
     dispatcher = build_dispatcher()
     asyncio.run(start_polling(dispatcher, bot))

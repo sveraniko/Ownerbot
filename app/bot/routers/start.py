@@ -6,9 +6,10 @@ from aiogram.types import Message
 
 from app.bot.ui.formatting import format_start_message, format_tools_list
 from app.core.db import check_db
-from app.core.redis import check_redis
+from app.core.redis import check_redis, get_redis
 from app.core.settings import get_settings
 from app.tools.registry_setup import build_registry
+from app.upstream.selector import resolve_effective_mode
 
 router = Router()
 registry = build_registry()
@@ -19,6 +20,8 @@ async def cmd_start(message: Message) -> None:
     settings = get_settings()
     db_ok = False
     redis_ok = False
+    effective_mode = settings.upstream_mode
+
     try:
         db_ok = await check_db()
     except Exception:
@@ -28,12 +31,22 @@ async def cmd_start(message: Message) -> None:
     except Exception:
         redis_ok = False
 
+    try:
+        redis = await get_redis()
+        if await redis.ping():
+            effective_mode, _ = await resolve_effective_mode(settings=settings, redis=redis)
+    except Exception:
+        effective_mode = settings.upstream_mode
+
     text = format_start_message(
         {
             "db_ok": db_ok,
             "redis_ok": redis_ok,
             "owner_ids_text": ", ".join(str(x) for x in settings.owner_ids) or "none",
-            "mode": settings.upstream_mode,
+            "configured_mode": settings.upstream_mode,
+            "effective_mode": effective_mode,
+            "asr_provider": settings.asr_provider,
+            "llm_provider": settings.llm_provider,
         }
     )
     await message.answer(text)
