@@ -161,7 +161,14 @@ async def handle_confirm(callback_query: CallbackQuery) -> None:
         },
     )
 
-    await callback_query.message.edit_text(format_tool_response(response))
+    text = format_tool_response(response)
+    if response.status == "error" and response.error and response.error.code == "ACTION_CONFLICT":
+        msg = response.error.message.lower()
+        if "явное подтверждение" in msg or "force" in msg:
+            text = "SIS требует явное подтверждение аномалии. Запусти dry_run заново и выбери ⚠️ «Применить несмотря на аномалию»."
+        elif "нет данных для отката" in msg:
+            text = "Откат недоступен: SIS вернул «Нет данных для отката»."
+    await callback_query.message.edit_text(text)
     await callback_query.answer()
     await expire_confirm_token(token, CONFIRM_TOKEN_RETAIN_TTL_SEC_DEFAULT)
 
