@@ -26,6 +26,7 @@ class TemplateSpec(BaseModel):
     kind: Literal["REPORT", "ACTION"]
     tool_name: str
     default_payload: dict[str, object] = Field(default_factory=dict)
+    presentation: dict[str, object] | None = None
     inputs: list[InputStep] = Field(default_factory=list)
     order: int = 100
 
@@ -33,7 +34,17 @@ class TemplateSpec(BaseModel):
 class TemplateCatalog(BaseModel):
     templates: list[TemplateSpec]
 
-    _CATEGORY_ORDER = ["prices", "products", "looks", "discounts"]
+    _CATEGORY_ORDER = [
+        "reports",
+        "orders",
+        "team",
+        "systems",
+        "advanced",
+        "prices",
+        "products",
+        "looks",
+        "discounts",
+    ]
 
     def list_categories(self) -> list[str]:
         categories = {spec.category for spec in self.templates}

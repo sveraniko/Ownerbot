@@ -1,0 +1,11 @@
+template_id: ORD_LATE_SHIP
+category: orders
+title: Просроченная отправка
+button_text: Просроченная отправка
+kind: REPORT
+tool_name: orders_search
+order: 60
+default_payload:
+  status: stuck
+  limit: 20
+inputs: []

@@ -1,20 +1,26 @@
 from __future__ import annotations
 
+from datetime import timedelta
+
 from pydantic import BaseModel, Field
 from sqlalchemy import or_, select
 
+from app.core.time import utcnow
 from app.storage.models import OwnerbotDemoChatThread
 from app.tools.contracts import ToolProvenance, ToolResponse
 
 
 class Payload(BaseModel):
+    threshold_hours: int = Field(0, ge=0, le=168)
     limit: int = Field(10, ge=1, le=50)
 
 
 async def handle(payload: Payload, correlation_id: str, session) -> ToolResponse:
+    cutoff = utcnow() - timedelta(hours=payload.threshold_hours)
     stmt = (
         select(OwnerbotDemoChatThread)
         .where(OwnerbotDemoChatThread.open.is_(True))
+        .where(OwnerbotDemoChatThread.last_customer_message_at <= cutoff)
         .where(
             or_(
                 OwnerbotDemoChatThread.last_manager_reply_at.is_(None),
@@ -29,6 +35,7 @@ async def handle(payload: Payload, correlation_id: str, session) -> ToolResponse
 
     data = {
         "count": len(rows),
+        "threshold_hours": payload.threshold_hours,
         "threads": [
             {
                 "thread_id": row.thread_id,
@@ -42,6 +49,6 @@ async def handle(payload: Payload, correlation_id: str, session) -> ToolResponse
     provenance = ToolProvenance(
         sources=["ownerbot_demo_chat_threads", "local_demo"],
         window=None,
-        filters_hash="demo",
+        filters_hash=f"open:true;needs_reply:true;threshold_hours:{payload.threshold_hours}",
     )
     return ToolResponse.ok(correlation_id=correlation_id, data=data, provenance=provenance)

@@ -1,0 +1,9 @@
+template_id: ADV_REPLAY_LAST
+category: advanced
+title: Replay last action
+button_text: Replay last
+kind: REPORT
+tool_name: retrospective_last
+order: 30
+default_payload: {}
+inputs: []

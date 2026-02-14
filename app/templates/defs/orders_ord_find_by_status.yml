@@ -1,0 +1,20 @@
+template_id: ORD_FIND_BY_STATUS
+category: orders
+title: Найти по статусу
+button_text: Найти по статусу
+kind: REPORT
+tool_name: orders_search
+order: 30
+default_payload:
+  limit: 20
+inputs:
+  - key: status
+    prompt: Выбери статус
+    parser: str
+    presets:
+      - text: paid
+        value: paid
+      - text: pending
+        value: pending
+      - text: stuck
+        value: stuck

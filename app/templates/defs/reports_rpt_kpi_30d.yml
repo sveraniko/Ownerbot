@@ -1,0 +1,10 @@
+template_id: RPT_KPI_30D
+category: reports
+title: KPI за 30 дней
+button_text: KPI за 30 дней
+kind: REPORT
+tool_name: revenue_trend
+order: 40
+default_payload:
+  days: 30
+inputs: []

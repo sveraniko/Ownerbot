@@ -1,0 +1,13 @@
+template_id: RPT_REVENUE_TREND_90D_PNG
+category: reports
+title: Тренд выручки 90д (PNG)
+button_text: Тренд 90д PNG
+kind: REPORT
+tool_name: revenue_trend
+order: 100
+default_payload:
+  days: 90
+presentation:
+  kind: chart_png
+  days: 90
+inputs: []

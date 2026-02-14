@@ -28,6 +28,13 @@ from app.tools.impl import (
     sis_looks_publish,
     sis_discounts_clear,
     sis_discounts_set,
+    sys_upstream_mode,
+    sys_health,
+    sys_audit_recent,
+    sys_last_errors,
+    kpi_compare,
+    team_queue_summary,
+    bulk_flag_order,
 )
 
 
@@ -58,5 +65,12 @@ def build_registry() -> ToolRegistry:
     registry.register("sis_looks_publish", "1.0", sis_looks_publish.Payload, sis_looks_publish.handle, kind="action")
     registry.register("sis_discounts_clear", "1.0", sis_discounts_clear.Payload, sis_discounts_clear.handle, kind="action")
     registry.register("sis_discounts_set", "1.0", sis_discounts_set.Payload, sis_discounts_set.handle, kind="action")
+    registry.register("sys_upstream_mode", "1.0", sys_upstream_mode.Payload, sys_upstream_mode.handle)
+    registry.register("sys_health", "1.0", sys_health.Payload, sys_health.handle)
+    registry.register("sys_audit_recent", "1.0", sys_audit_recent.Payload, sys_audit_recent.handle)
+    registry.register("sys_last_errors", "1.0", sys_last_errors.Payload, sys_last_errors.handle)
+    registry.register("kpi_compare", "1.0", kpi_compare.Payload, kpi_compare.handle, is_stub=True)
+    registry.register("team_queue_summary", "1.0", team_queue_summary.Payload, team_queue_summary.handle, is_stub=True)
+    registry.register("bulk_flag_order", "1.0", bulk_flag_order.Payload, bulk_flag_order.handle, is_stub=True, kind="action")
     registry.register("retrospective_last", "1.0", retrospective_last.Payload, retrospective_last.handle)
     return registry

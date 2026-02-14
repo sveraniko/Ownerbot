@@ -1,0 +1,11 @@
+template_id: RPT_WEEKLY_PDF
+category: reports
+title: Еженедельный PDF
+button_text: Weekly PDF
+kind: REPORT
+tool_name: kpi_snapshot
+order: 130
+default_payload: {}
+presentation:
+  kind: weekly_pdf
+inputs: []

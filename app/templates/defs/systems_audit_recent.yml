@@ -1,0 +1,10 @@
+template_id: SYS_AUDIT_RECENT
+category: systems
+title: Последние audit события
+button_text: SYS audit recent
+kind: REPORT
+tool_name: sys_audit_recent
+order: 40
+default_payload:
+  limit: 20
+inputs: []

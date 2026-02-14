@@ -163,7 +163,8 @@ async def test_consume_step_value_runs_action_when_inputs_finished(monkeypatch) 
     await templates._consume_step_value(msg, 42, spec, 0, "10")
 
     assert called[0] == ("clear", 42)
-    assert called[1][0:3] == ("run", 42, "sis_prices_bump")
+    assert called[1][0:2] == ("run", 42)
+    assert called[1][2].tool_name == "sis_prices_bump"
     assert called[1][3] == {"bump_percent": 10, "dry_run": True}
 
 

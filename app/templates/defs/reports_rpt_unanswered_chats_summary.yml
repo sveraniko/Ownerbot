@@ -1,0 +1,11 @@
+template_id: RPT_UNANSWERED_CHATS_SUMMARY
+category: reports
+title: Сводка чатов без ответа
+button_text: Чаты без ответа
+kind: REPORT
+tool_name: chats_unanswered
+order: 120
+default_payload:
+  threshold_hours: 0
+  limit: 20
+inputs: []

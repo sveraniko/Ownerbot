@@ -1,0 +1,10 @@
+template_id: ORD_FIND_RECENT
+category: orders
+title: Последние 20 заказов
+button_text: Последние 20
+kind: REPORT
+tool_name: orders_search
+order: 40
+default_payload:
+  limit: 20
+inputs: []

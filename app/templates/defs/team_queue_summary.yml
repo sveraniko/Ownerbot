@@ -1,0 +1,9 @@
+template_id: TEAM_QUEUE_SUMMARY
+category: team
+title: Сводка очереди обращений
+button_text: Очередь обращений
+kind: REPORT
+tool_name: team_queue_summary
+order: 30
+default_payload: {}
+inputs: []

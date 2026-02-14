@@ -1,0 +1,9 @@
+template_id: SYS_UPSTREAM_MODE
+category: systems
+title: Режим апстрима
+button_text: SYS upstream mode
+kind: REPORT
+tool_name: sys_upstream_mode
+order: 30
+default_payload: {}
+inputs: []

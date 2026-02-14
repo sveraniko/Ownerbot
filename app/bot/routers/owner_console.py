@@ -7,7 +7,7 @@ import uuid
 
 from aiogram import F, Router
 from aiogram.filters import Command
-from aiogram.types import BufferedInputFile, Message
+from aiogram.types import Message
 
 from app.actions.confirm_flow import create_confirm_token
 from app.asr.audio_convert import convert_ogg_to_wav
@@ -20,6 +20,7 @@ from app.bot.services.action_preview import is_noop_preview
 from app.bot.services.intent_router import route_intent
 from app.bot.services.retrospective import write_retrospective_event
 from app.bot.services.tool_runner import run_tool
+from app.bot.services.presentation import send_revenue_trend_png, send_weekly_pdf
 from app.bot.ui.formatting import detect_source_tag, format_tool_response
 from app.bot.ui.templates_keyboards import (
     build_templates_discounts_keyboard,
@@ -32,8 +33,6 @@ from app.core.logging import get_correlation_id
 from app.core.redis import get_redis
 from app.core.settings import get_settings
 from app.core.audit import write_audit_event
-from app.reports.charts import render_revenue_trend_png
-from app.reports.pdf_weekly import build_weekly_report_pdf
 from app.llm.router import llm_plan_intent
 from app.tools.contracts import ToolActor, ToolProvenance, ToolResponse, ToolTenant
 from app.tools.providers.sis_gateway import run_sis_tool, upstream_unavailable
@@ -46,119 +45,13 @@ logger = logging.getLogger(__name__)
 registry = build_registry()
 
 
-def _build_trend_caption(response_data: dict, currency: str) -> str:
-    totals = response_data.get("totals", {})
-    delta = response_data.get("delta_vs_prev_window") or {}
-    total_revenue = float(totals.get("revenue_gross", 0.0))
-    delta_pct = delta.get("revenue_gross_pct")
-    delta_text = f"{delta_pct}%" if delta_pct is not None else "n/a"
-    generated_at = response_data.get("end_day", "n/a")
-    return (
-        f"Total revenue: {total_revenue:.2f} {currency}\n"
-        f"Delta vs prev window: {delta_text}\n"
-        f"Currency: {currency}\n"
-        f"generated_at: {generated_at}"
-    )
-
-
 async def _send_weekly_pdf(message: Message, actor: ToolActor, tenant: ToolTenant, correlation_id: str) -> None:
-    trend_response = await run_tool(
-        "revenue_trend",
-        {"days": 7},
+    await send_weekly_pdf(
         message=message,
         actor=actor,
         tenant=tenant,
         correlation_id=correlation_id,
         registry=registry,
-    )
-    kpi_response = await run_tool(
-        "kpi_snapshot",
-        {},
-        message=message,
-        actor=actor,
-        tenant=tenant,
-        correlation_id=correlation_id,
-        registry=registry,
-    )
-    stuck_response = await run_tool(
-        "orders_search",
-        {"status": "stuck", "limit": 10},
-        message=message,
-        actor=actor,
-        tenant=tenant,
-        correlation_id=correlation_id,
-        registry=registry,
-    )
-    chats_response = await run_tool(
-        "chats_unanswered",
-        {"limit": 10},
-        message=message,
-        actor=actor,
-        tenant=tenant,
-        correlation_id=correlation_id,
-        registry=registry,
-    )
-
-    if any(resp.status == "error" for resp in [trend_response, kpi_response, stuck_response, chats_response]):
-        await message.answer("Не удалось собрать weekly PDF: один из tools вернул ошибку.")
-        return
-
-    trend_data = trend_response.data
-    kpi_data = kpi_response.data
-    stuck_orders = stuck_response.data.get("orders", [])
-    chats = chats_response.data.get("threads", [])
-
-    series = trend_data.get("series", [])
-    totals = trend_data.get("totals", {})
-    daily_revenues = [float(item.get("revenue_gross", 0.0)) for item in series]
-    avg_revenue = (sum(daily_revenues) / len(daily_revenues)) if daily_revenues else 0.0
-    best_day = max(series, key=lambda x: float(x.get("revenue_gross", 0.0))) if series else None
-    worst_day = min(series, key=lambda x: float(x.get("revenue_gross", 0.0))) if series else None
-
-    pdf_payload = {
-        "generated_at": trend_response.as_of.isoformat(),
-        "correlation_id": correlation_id,
-        "kpi_summary": [
-            f"day={kpi_data.get('day')}",
-            f"revenue_gross={kpi_data.get('revenue_gross')}",
-            f"orders_paid={kpi_data.get('orders_paid')}",
-            f"aov={kpi_data.get('aov')}",
-        ],
-        "revenue_summary": [
-            f"total={float(totals.get('revenue_gross', 0.0)):.2f} {tenant.currency}",
-            f"avg/day={avg_revenue:.2f} {tenant.currency}",
-            (
-                f"best day={best_day.get('day')} ({float(best_day.get('revenue_gross', 0.0)):.2f} {tenant.currency})"
-                if best_day
-                else "best day=n/a"
-            ),
-            (
-                f"worst day={worst_day.get('day')} ({float(worst_day.get('revenue_gross', 0.0)):.2f} {tenant.currency})"
-                if worst_day
-                else "worst day=n/a"
-            ),
-        ],
-        "stuck_orders": [
-            f"{item.get('order_id')} | {item.get('status')} | {item.get('amount')} {item.get('currency')}"
-            for item in stuck_orders
-        ],
-        "unanswered_chats": [
-            f"{item.get('thread_id')} | customer={item.get('customer_id')} | last={item.get('last_customer_message_at')}"
-            for item in chats
-        ],
-    }
-
-    pdf_bytes = build_weekly_report_pdf(pdf_payload)
-    await message.answer_document(
-        BufferedInputFile(pdf_bytes, filename="weekly_report_demo.pdf"),
-        caption="Weekly PDF report (DEMO)",
-    )
-    await message.answer(
-        "Weekly PDF готов: KPI + trend(7d) + stuck orders + unanswered chats.",
-    )
-    await write_audit_event(
-        "artifact_generated",
-        {"kind": "weekly_pdf", "correlation_id": correlation_id, "tool": "weekly_preset"},
     )
 
 
@@ -398,15 +291,14 @@ async def handle_tool_call(message: Message, text: str, *, input_kind: str = "te
     if intent.presentation and intent.presentation.get("kind") == "chart_png" and response.status == "ok":
         days = int(intent.payload.get("days", 14))
         title = f"Revenue trend — последние {days} дней"
-        png_bytes = render_revenue_trend_png(
-            series=response.data.get("series", []),
-            currency=tenant.currency,
+        await send_revenue_trend_png(
+            message=message,
+            trend_response=response.data,
+            days=days,
             title=title,
-            tz=tenant.timezone,
-        )
-        await message.answer_photo(
-            BufferedInputFile(png_bytes, filename=f"revenue_trend_{days}d.png"),
-            caption=f"Источник: {source_tag or 'DEMO'}\n" + _build_trend_caption(response.data, tenant.currency),
+            currency=tenant.currency,
+            timezone=tenant.timezone,
+            source_tag=source_tag if "source_tag" in locals() else None,
         )
         artifacts.append("chart_png")
         await write_audit_event(

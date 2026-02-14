@@ -1,0 +1,9 @@
+template_id: ADV_EXPORT_JSON
+category: advanced
+title: Export JSON
+button_text: Export JSON
+kind: REPORT
+tool_name: inventory_status
+order: 20
+default_payload: {}
+inputs: []

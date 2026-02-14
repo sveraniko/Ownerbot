@@ -1,0 +1,11 @@
+template_id: TEAM_UNANSWERED_6H
+category: team
+title: Чаты без ответа >6ч
+button_text: Чаты >6ч
+kind: REPORT
+tool_name: chats_unanswered
+order: 20
+default_payload:
+  threshold_hours: 6
+  limit: 20
+inputs: []

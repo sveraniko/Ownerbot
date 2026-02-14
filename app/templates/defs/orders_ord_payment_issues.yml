@@ -1,0 +1,11 @@
+template_id: ORD_PAYMENT_ISSUES
+category: orders
+title: Проблемы оплаты
+button_text: Проблемы оплаты
+kind: REPORT
+tool_name: orders_search
+order: 70
+default_payload:
+  status: pending
+  limit: 20
+inputs: []

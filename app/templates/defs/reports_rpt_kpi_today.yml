@@ -1,0 +1,10 @@
+template_id: RPT_KPI_TODAY
+category: reports
+title: KPI за сегодня
+button_text: KPI за сегодня
+kind: REPORT
+tool_name: kpi_snapshot
+order: 10
+default_payload:
+  day: "@today"
+inputs: []

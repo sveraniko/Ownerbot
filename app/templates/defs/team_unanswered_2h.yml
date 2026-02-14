@@ -1,0 +1,11 @@
+template_id: TEAM_UNANSWERED_2H
+category: team
+title: Чаты без ответа >2ч
+button_text: Чаты >2ч
+kind: REPORT
+tool_name: chats_unanswered
+order: 10
+default_payload:
+  threshold_hours: 2
+  limit: 20
+inputs: []

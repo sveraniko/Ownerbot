@@ -1,0 +1,10 @@
+template_id: RPT_KPI_7D
+category: reports
+title: KPI за 7 дней
+button_text: KPI за 7 дней
+kind: REPORT
+tool_name: revenue_trend
+order: 30
+default_payload:
+  days: 7
+inputs: []

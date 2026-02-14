@@ -1,0 +1,12 @@
+template_id: ORD_NOTIFY_TEAM
+category: orders
+title: Напомнить менеджеру
+button_text: Напомнить менеджеру
+kind: ACTION
+tool_name: notify_team
+order: 90
+default_payload: {}
+inputs:
+  - key: message
+    prompt: Сообщение для команды (добавь order_id)
+    parser: str
