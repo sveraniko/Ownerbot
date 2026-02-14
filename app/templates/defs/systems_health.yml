@@ -1,0 +1,9 @@
+template_id: SYS_HEALTH
+category: systems
+title: Здоровье систем
+button_text: SYS health
+kind: REPORT
+tool_name: sys_health
+order: 10
+default_payload: {}
+inputs: []

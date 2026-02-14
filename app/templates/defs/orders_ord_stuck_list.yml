@@ -1,0 +1,11 @@
+template_id: ORD_STUCK_LIST
+category: orders
+title: Зависшие заказы
+button_text: Зависшие заказы
+kind: REPORT
+tool_name: orders_search
+order: 50
+default_payload:
+  status: stuck
+  limit: 20
+inputs: []

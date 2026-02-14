@@ -1,0 +1,10 @@
+template_id: RPT_COMPARE_MOM
+category: reports
+title: Сравнение MoM
+button_text: Сравнение MoM
+kind: REPORT
+tool_name: revenue_trend
+order: 60
+default_payload:
+  days: 30
+inputs: []

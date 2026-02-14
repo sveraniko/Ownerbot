@@ -1,0 +1,15 @@
+template_id: ORD_FLAG
+category: orders
+title: Пометить заказ
+button_text: Пометить заказ
+kind: ACTION
+tool_name: flag_order
+order: 80
+default_payload: {}
+inputs:
+  - key: order_id
+    prompt: Введи order_id
+    parser: str
+  - key: reason
+    prompt: Введи причину
+    parser: str

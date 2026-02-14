@@ -1,0 +1,10 @@
+template_id: RPT_REVENUE_TREND_30D
+category: reports
+title: Тренд выручки 30д (текст)
+button_text: Тренд выручки 30д
+kind: REPORT
+tool_name: revenue_trend
+order: 80
+default_payload:
+  days: 30
+inputs: []

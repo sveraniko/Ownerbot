@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import json
 import uuid
+from datetime import date, timedelta
+
+from app.core.time import utcnow
 
 from aiogram import F, Router
 from aiogram.filters import Command
@@ -12,6 +15,7 @@ from app.bot.keyboards.confirm import confirm_keyboard, confirm_keyboard_with_fo
 from app.bot.services.action_force import requires_force_confirm
 from app.bot.services.action_preview import is_noop_preview
 from app.bot.services.tool_runner import run_tool
+from app.bot.services.presentation import send_revenue_trend_png, send_weekly_pdf
 from app.bot.ui.formatting import detect_source_tag, format_tool_response
 from app.bot.ui.templates_keyboards import (
     build_input_presets_keyboard,
@@ -125,7 +129,7 @@ async def tpl_run(callback_query: CallbackQuery) -> None:
     payload = dict(spec.default_payload)
     if not spec.inputs:
         payload["dry_run"] = spec.kind == "ACTION"
-        await _run_template_action(callback_query.message, callback_query.from_user.id, spec.tool_name, payload)
+        await _run_template_action(callback_query.message, callback_query.from_user.id, spec, payload)
         await callback_query.answer()
         return
 
@@ -178,7 +182,7 @@ async def tpl_bump_input(message: Message) -> None:
     payload = dict(spec.default_payload)
     payload["bump_percent"] = raw
     payload["dry_run"] = True
-    await _run_template_action(message, message.from_user.id, spec.tool_name, payload)
+    await _run_template_action(message, message.from_user.id, spec, payload)
 
 
 @router.message(Command("tpl_rate_set"))
@@ -248,10 +252,33 @@ async def _consume_step_value(message: Message, user_id: int, spec, step_index: 
 
     await _clear_state(user_id)
     payload["dry_run"] = spec.kind == "ACTION"
-    await _run_template_action(message, user_id, spec.tool_name, payload)
+    await _run_template_action(message, user_id, spec, payload)
 
 
-async def _run_template_action(message: Message, owner_user_id: int, tool_name: str, payload: dict) -> None:
+
+
+def _resolve_payload_tokens(value):
+    if isinstance(value, dict):
+        return {k: _resolve_payload_tokens(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_resolve_payload_tokens(v) for v in value]
+    if value == "@today":
+        return date.today().isoformat()
+    if value == "@yesterday":
+        return (date.today() - timedelta(days=1)).isoformat()
+    if value == "@now":
+        return utcnow().isoformat()
+    return value
+
+
+async def _run_template_action(message: Message, owner_user_id: int, spec, payload: dict) -> None:
+    if isinstance(spec, str):
+        tool_name = spec
+        presentation = {}
+    else:
+        tool_name = spec.tool_name
+        presentation = spec.presentation or {}
+    payload = _resolve_payload_tokens(payload)
     settings = get_settings()
     redis = await get_redis()
     effective_mode, _ = await resolve_effective_mode(settings=settings, redis=redis)
@@ -269,6 +296,16 @@ async def _run_template_action(message: Message, owner_user_id: int, tool_name: 
         ping_callable=_ping_failover,
     )
 
+    if presentation.get("kind") == "weekly_pdf":
+        await send_weekly_pdf(
+            message=message,
+            actor=actor,
+            tenant=tenant,
+            correlation_id=correlation_id,
+            registry=registry,
+        )
+        return
+
     response = await run_tool(
         tool_name,
         payload,
@@ -279,6 +316,19 @@ async def _run_template_action(message: Message, owner_user_id: int, tool_name: 
         idempotency_key=str(uuid.uuid4()),
         registry=registry,
     )
+
+    if response.status == "ok" and presentation.get("kind") == "chart_png":
+        days = int(presentation.get("days", payload.get("days", 30)))
+        title = f"Revenue trend — последние {days} дней"
+        await send_revenue_trend_png(
+            message=message,
+            trend_response=response.data,
+            days=days,
+            title=title,
+            currency=tenant.currency,
+            timezone=tenant.timezone,
+        )
+        return
 
     if payload.get("dry_run") is True and response.status == "ok":
         if is_noop_preview(response):

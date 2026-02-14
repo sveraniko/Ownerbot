@@ -1,0 +1,9 @@
+template_id: ORD_BULK_FLAG
+category: orders
+title: Массово пометить заказы
+button_text: Массово пометить
+kind: ACTION
+tool_name: bulk_flag_order
+order: 100
+default_payload: {}
+inputs: []

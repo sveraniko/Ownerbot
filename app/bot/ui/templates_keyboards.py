@@ -6,6 +6,11 @@ from app.templates.catalog import get_template_catalog
 
 _PAGE_SIZE = 8
 _CATEGORY_META = {
+    "reports": ("📊", "Отчёты"),
+    "orders": ("🧾", "Заказы"),
+    "team": ("👥", "Команда"),
+    "systems": ("⚙️", "Системы"),
+    "advanced": ("🔧", "Advanced"),
     "prices": ("💸", "Цены"),
     "products": ("📦", "Товары"),
     "looks": ("👗", "Луки"),

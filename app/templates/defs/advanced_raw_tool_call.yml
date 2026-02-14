@@ -1,0 +1,9 @@
+template_id: ADV_RAW_TOOL_CALL
+category: advanced
+title: Raw tool call
+button_text: Raw tool call
+kind: REPORT
+tool_name: truststack_signals
+order: 10
+default_payload: {}
+inputs: []

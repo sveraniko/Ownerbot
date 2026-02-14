@@ -1,0 +1,10 @@
+template_id: RPT_COMPARE_WOW
+category: reports
+title: Сравнение WoW
+button_text: Сравнение WoW
+kind: REPORT
+tool_name: revenue_trend
+order: 50
+default_payload:
+  days: 7
+inputs: []

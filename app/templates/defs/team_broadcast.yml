@@ -1,0 +1,12 @@
+template_id: TEAM_BROADCAST
+category: team
+title: Сообщение команде
+button_text: Broadcast команде
+kind: ACTION
+tool_name: notify_team
+order: 50
+default_payload: {}
+inputs:
+  - key: message
+    prompt: Введи сообщение команде
+    parser: str

@@ -1,0 +1,12 @@
+template_id: ORD_FIND_BY_ID
+category: orders
+title: Найти заказ по ID
+button_text: Найти по ID
+kind: REPORT
+tool_name: order_detail
+order: 10
+default_payload: {}
+inputs:
+  - key: order_id
+    prompt: Введи order_id
+    parser: str

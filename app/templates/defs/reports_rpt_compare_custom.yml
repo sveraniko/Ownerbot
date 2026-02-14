@@ -1,0 +1,9 @@
+template_id: RPT_COMPARE_CUSTOM
+category: reports
+title: Сравнить периоды
+button_text: Сравнить периоды
+kind: REPORT
+tool_name: kpi_compare
+order: 70
+default_payload: {}
+inputs: []

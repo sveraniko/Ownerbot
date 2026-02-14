@@ -1,0 +1,12 @@
+template_id: ORD_FIND_BY_PHONE
+category: orders
+title: Найти заказ по телефону
+button_text: Найти по телефону
+kind: REPORT
+tool_name: orders_search
+order: 20
+default_payload: {}
+inputs:
+  - key: q
+    prompt: Введи телефон клиента
+    parser: str

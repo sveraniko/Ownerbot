@@ -1,0 +1,11 @@
+template_id: RPT_STUCK_ORDERS_SUMMARY
+category: reports
+title: Сводка зависших заказов
+button_text: Зависшие заказы
+kind: REPORT
+tool_name: orders_search
+order: 110
+default_payload:
+  status: stuck
+  limit: 20
+inputs: []

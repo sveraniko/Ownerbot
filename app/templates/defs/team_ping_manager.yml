@@ -1,0 +1,12 @@
+template_id: TEAM_PING_MANAGER
+category: team
+title: Напомнить менеджеру
+button_text: Пинг менеджеру
+kind: ACTION
+tool_name: notify_team
+order: 40
+default_payload: {}
+inputs:
+  - key: message
+    prompt: Введи сообщение менеджеру
+    parser: str

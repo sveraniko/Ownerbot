@@ -1,0 +1,10 @@
+template_id: SYS_LAST_ERRORS
+category: systems
+title: Последние ошибки
+button_text: SYS last errors
+kind: REPORT
+tool_name: sys_last_errors
+order: 20
+default_payload:
+  limit: 20
+inputs: []

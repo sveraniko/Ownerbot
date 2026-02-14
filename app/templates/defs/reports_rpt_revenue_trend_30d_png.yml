@@ -1,0 +1,13 @@
+template_id: RPT_REVENUE_TREND_30D_PNG
+category: reports
+title: Тренд выручки 30д (PNG)
+button_text: Тренд 30д PNG
+kind: REPORT
+tool_name: revenue_trend
+order: 90
+default_payload:
+  days: 30
+presentation:
+  kind: chart_png
+  days: 30
+inputs: []
