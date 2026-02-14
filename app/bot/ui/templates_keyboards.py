@@ -18,6 +18,9 @@ def build_templates_prices_keyboard() -> InlineKeyboardMarkup:
         [
             [("Поднять цены на %", "tpl:prices:bump")],
             [("FX пересчёт цен", "tpl:prices:fx")],
+            [("FX статус", "tpl:prices:fx:status")],
+            [("FX обновить (по настройкам)", "tpl:prices:fx:auto")],
+            [("FX расписание/пороги", "tpl:prices:fx:settings")],
             [("Откат последнего FX", "tpl:prices:rollback")],
         ]
     )

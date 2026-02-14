@@ -128,3 +128,46 @@ async def test_run_tool_passes_bot_when_needed() -> None:
 
     assert response.status == "ok"
     assert received["bot"] is bot_marker
+
+
+@pytest.mark.asyncio
+async def test_run_tool_passes_idempotency_key_when_handler_accepts_it() -> None:
+    from app.bot.services.tool_runner import run_tool
+
+    received = {}
+
+    async def handler(payload, correlation_id: str, session, idempotency_key: str | None = None) -> ToolResponse:
+        received["idempotency_key"] = idempotency_key
+        return ToolResponse.ok(
+            correlation_id=correlation_id,
+            data={},
+            provenance=ToolProvenance(sources=["local"]),
+        )
+
+    class DummyPayload:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    tool = SimpleNamespace(name="dummy", payload_model=DummyPayload, handler=handler)
+    registry = SimpleNamespace(get=lambda _: tool)
+
+    class DummyScope:
+        async def __aenter__(self):
+            return None
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    response = await run_tool(
+        "dummy",
+        {},
+        actor=ToolActor(owner_user_id=1),
+        tenant=SimpleNamespace(),
+        correlation_id="corr-6",
+        idempotency_key="idem-777",
+        session_factory=lambda: DummyScope(),
+        registry=registry,
+    )
+
+    assert response.status == "ok"
+    assert received["idempotency_key"] == "idem-777"

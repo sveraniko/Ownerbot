@@ -104,3 +104,36 @@ def test_template_parse_helpers() -> None:
         _parse_percent("96")
     with pytest.raises(ValueError):
         _parse_stock_threshold("0")
+
+
+@pytest.mark.asyncio
+async def test_template_flow_dry_run_noop_skips_confirm(monkeypatch) -> None:
+    from app.bot.routers import templates
+
+    async def _resolve(**kwargs):
+        return "DEMO", None
+
+    async def _choose(**kwargs):
+        return "DEMO", None
+
+    async def _run_tool(*args, **kwargs):
+        return ToolResponse.ok(
+            correlation_id="corr",
+            data={"would_apply": False, "status": "noop"},
+            provenance=ToolProvenance(sources=["sis"]),
+        )
+
+    async def _create_token(payload):
+        raise AssertionError("confirm token must not be created for no-op preview")
+
+    monkeypatch.setattr("app.bot.routers.templates.resolve_effective_mode", _resolve)
+    monkeypatch.setattr("app.bot.routers.templates.choose_data_mode", _choose)
+    monkeypatch.setattr("app.bot.routers.templates.run_tool", _run_tool)
+    monkeypatch.setattr("app.bot.routers.templates.create_confirm_token", _create_token)
+    monkeypatch.setattr("app.bot.routers.templates.get_redis", _redis)
+
+    msg = _DummyMessage()
+    await templates._run_template_action(msg, 42, "sis_fx_reprice_auto", {"dry_run": True})
+
+    _, markup = msg.calls[0]
+    assert markup is None

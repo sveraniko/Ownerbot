@@ -45,3 +45,25 @@ def test_order_detail_match() -> None:
 
     assert result.tool == "order_detail"
     assert result.payload["order_id"] == "OB-7777"
+
+
+
+def test_fx_status_intent() -> None:
+    result = route_intent("курс валют")
+
+    assert result.tool == "sis_fx_status"
+
+
+def test_fx_reprice_auto_intent() -> None:
+    result = route_intent("обнови цены")
+
+    assert result.tool == "sis_fx_reprice_auto"
+    assert result.payload["dry_run"] is True
+    assert result.payload["force"] is False
+
+
+def test_fx_reprice_auto_force_intent() -> None:
+    result = route_intent("обнови цены принудительно")
+
+    assert result.tool == "sis_fx_reprice_auto"
+    assert result.payload["force"] is True
