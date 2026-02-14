@@ -6,7 +6,6 @@ import httpx
 from pydantic import ValidationError
 
 from app.core.settings import Settings
-from app.llm.prompts import LLM_INTENT_PROMPT
 from app.llm.schema import LLMIntent
 
 
@@ -14,7 +13,7 @@ class OpenAIPlanner:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
 
-    async def plan(self, text: str) -> LLMIntent:
+    async def plan(self, text: str, prompt: str) -> LLMIntent:
         if not self._settings.openai_api_key:
             raise RuntimeError("OPENAI_API_KEY is required for OPENAI LLM provider")
 
@@ -23,7 +22,7 @@ class OpenAIPlanner:
             "model": self._settings.openai_llm_model,
             "store": False,
             "input": [
-                {"role": "system", "content": [{"type": "input_text", "text": LLM_INTENT_PROMPT}]},
+                {"role": "system", "content": [{"type": "input_text", "text": prompt}]},
                 {"role": "user", "content": [{"type": "input_text", "text": user_text}]},
             ],
             "text": {

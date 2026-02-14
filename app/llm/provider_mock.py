@@ -4,7 +4,7 @@ from app.llm.schema import LLMIntent
 
 
 class MockPlanner:
-    async def plan(self, text: str) -> LLMIntent:
+    async def plan(self, text: str, prompt: str = "") -> LLMIntent:
         normalized = text.lower().strip()
         if "недель" in normalized and "pdf" in normalized:
             return LLMIntent(tool="weekly_preset", payload={}, confidence=0.98)

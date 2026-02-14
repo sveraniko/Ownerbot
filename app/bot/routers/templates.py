@@ -12,6 +12,13 @@ from app.actions.confirm_flow import create_confirm_token
 from app.bot.keyboards.confirm import confirm_keyboard, confirm_keyboard_with_force
 from app.bot.services.action_force import requires_force_confirm
 from app.bot.services.tool_runner import run_tool
+from app.bot.ui.templates_keyboards import (
+    build_templates_discounts_keyboard,
+    build_templates_looks_keyboard,
+    build_templates_main_keyboard,
+    build_templates_prices_keyboard,
+    build_templates_products_keyboard,
+)
 from app.bot.ui.formatting import detect_source_tag, format_tool_response
 from app.core.contracts import CANCEL_CB_PREFIX, CONFIRM_CB_PREFIX
 from app.core.logging import get_correlation_id
@@ -78,20 +85,14 @@ async def _clear_state(user_id: int) -> None:
 
 @router.message(Command("templates"))
 async def cmd_templates(message: Message) -> None:
-    await message.answer("Шаблоны", reply_markup=_kb([[('💸 Цены', 'tpl:prices')], [('📦 Товары', 'tpl:products')], [('🏷️ Скидки', 'tpl:discounts')]]))
+    await message.answer("Шаблоны", reply_markup=build_templates_main_keyboard())
 
 
 @router.callback_query(F.data == "tpl:prices")
 async def tpl_prices(callback_query: CallbackQuery) -> None:
     await callback_query.message.edit_text(
         "Шаблоны → Цены",
-        reply_markup=_kb(
-            [
-                [("Поднять цены на %", "tpl:prices:bump")],
-                [("FX пересчёт цен", "tpl:prices:fx")],
-                [("Откат последнего FX", "tpl:prices:rollback")],
-            ]
-        ),
+        reply_markup=build_templates_prices_keyboard(),
     )
     await callback_query.answer()
 
@@ -100,15 +101,7 @@ async def tpl_prices(callback_query: CallbackQuery) -> None:
 async def tpl_products(callback_query: CallbackQuery) -> None:
     await callback_query.message.edit_text(
         "Шаблоны → Товары",
-        reply_markup=_kb(
-            [
-                [("Опубликовать товары (по ID)", "tpl:products:publish:ids")],
-                [("Снять с публикации товары (по ID)", "tpl:products:archive:ids")],
-                [("Опубликовать ВСЕ товары", "tpl:products:publish:all")],
-                [("Снять с публикации ВСЕ товары", "tpl:products:archive:all")],
-                [("Луки", "tpl:looks")],
-            ]
-        ),
+        reply_markup=build_templates_products_keyboard(),
     )
     await callback_query.answer()
 
@@ -117,14 +110,7 @@ async def tpl_products(callback_query: CallbackQuery) -> None:
 async def tpl_looks(callback_query: CallbackQuery) -> None:
     await callback_query.message.edit_text(
         "Шаблоны → Товары → Луки",
-        reply_markup=_kb(
-            [
-                [("Опубликовать луки (по ID)", "tpl:looks:publish:ids")],
-                [("Снять с публикации луки (по ID)", "tpl:looks:archive:ids")],
-                [("Опубликовать ВСЕ луки", "tpl:looks:publish:all")],
-                [("Снять ВСЕ луки", "tpl:looks:archive:all")],
-            ]
-        ),
+        reply_markup=build_templates_looks_keyboard(),
     )
     await callback_query.answer()
 
@@ -133,14 +119,7 @@ async def tpl_looks(callback_query: CallbackQuery) -> None:
 async def tpl_discounts(callback_query: CallbackQuery) -> None:
     await callback_query.message.edit_text(
         "Шаблоны → Скидки",
-        reply_markup=_kb(
-            [
-                [("Удалить скидки (по ID товаров)", "tpl:discounts:clear:ids")],
-                [("Удалить ВСЕ скидки", "tpl:discounts:clear:all")],
-                [("Поставить скидку % (по ID товаров)", "tpl:discounts:set:ids")],
-                [("Поставить скидку % на остатки <= N", "tpl:discounts:set:stock")],
-            ]
-        ),
+        reply_markup=build_templates_discounts_keyboard(),
     )
     await callback_query.answer()
 

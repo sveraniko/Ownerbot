@@ -51,6 +51,13 @@ class Settings(BaseSettings):
     asr_max_retries: int = Field(default=2, alias="ASR_MAX_RETRIES")
     asr_retry_backoff_base_sec: float = Field(default=0.7, alias="ASR_RETRY_BACKOFF_BASE_SEC")
     asr_convert_format: str = Field(default="wav", alias="ASR_CONVERT_FORMAT")
+    asr_convert_voice_ogg_to_wav: bool = Field(default=True, alias="ASR_CONVERT_VOICE_OGG_TO_WAV")
+    asr_max_bytes: int = Field(default=20_000_000, alias="ASR_MAX_BYTES")
+    asr_max_seconds: int = Field(default=180, alias="ASR_MAX_SECONDS")
+    asr_prompt: str = Field(
+        default="SIS, OwnerBot, OB-1003, SKU, look, reprice, publish, скидка, гривна, евро, злотый",
+        alias="ASR_PROMPT",
+    )
     mock_asr_text: str = Field(default="дай kpi за вчера", alias="MOCK_ASR_TEXT")
     mock_asr_confidence: float = Field(default=0.93, alias="MOCK_ASR_CONFIDENCE")
     access_deny_audit_enabled: bool = Field(default=True, alias="ACCESS_DENY_AUDIT_ENABLED")
