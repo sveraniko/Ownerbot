@@ -11,7 +11,64 @@ from sqlalchemy import select
 from app.core.audit import write_audit_event
 from app.core.db import session_scope
 from app.core.time import utcnow
-from app.storage.models import OwnerbotDemoKpiDaily, OwnerbotDemoOrder, OwnerbotDemoChatThread
+from app.storage.models import (
+    OwnerbotDemoChatThread,
+    OwnerbotDemoKpiDaily,
+    OwnerbotDemoOrder,
+    OwnerbotDemoOrderItem,
+    OwnerbotDemoProduct,
+)
+
+
+_PRODUCT_SEED = [
+    ("PRD-001", "Тайтсы Core Black", "Тайтсы", 39.90, 20, True, True),
+    ("PRD-002", "Тайтсы Motion Grey", "Тайтсы", 42.50, 5, True, True),
+    ("PRD-003", "Тайтсы Zero Stock", "Тайтсы", 37.00, 0, True, True),
+    ("PRD-004", "Тайтсы Draft", "Тайтсы", 41.00, 2, False, False),
+    ("PRD-005", "Топ Breeze White", "Топы", 24.90, 20, True, True),
+    ("PRD-006", "Топ Breeze Mint", "Топы", 0.0, 5, True, True),
+    ("PRD-007", "Топ Active Noir", "Топы", 28.00, 2, False, True),
+    ("PRD-008", "Топ Archive", "Топы", 21.00, 0, True, False),
+    ("PRD-009", "Худи Urban Sand", "Худи", 59.90, 20, True, True),
+    ("PRD-010", "Худи Urban Coal", "Худи", 62.00, 5, True, True),
+    ("PRD-011", "Худи Lite", "Худи", 54.00, 2, False, True),
+    ("PRD-012", "Худи Proto", "Худи", 0.0, 0, True, False),
+    ("PRD-013", "Аксессуар Bottle", "Аксессуары", 14.90, 20, True, True),
+    ("PRD-014", "Аксессуар Bag", "Аксессуары", 19.90, 5, True, True),
+    ("PRD-015", "Аксессуар Belt", "Аксессуары", 17.00, 2, False, True),
+    ("PRD-016", "Аксессуар Clip", "Аксессуары", 13.00, 0, True, True),
+    ("PRD-017", "Куртка Storm", "Верхняя одежда", 89.00, 5, True, True),
+    ("PRD-018", "Куртка Breeze", "Верхняя одежда", 0.0, 2, True, True),
+    ("PRD-019", "Куртка Lab", "Верхняя одежда", 79.00, 0, False, False),
+    ("PRD-020", "Куртка Urban", "Верхняя одежда", 85.00, 20, True, True),
+    ("PRD-021", "Носки Core", "Базовые", 9.90, 20, True, True),
+    ("PRD-022", "Носки Flex", "Базовые", 8.90, 5, True, True),
+    ("PRD-023", "Носки Sample", "Базовые", 0.0, 2, False, True),
+    ("PRD-024", "Носки Hidden", "Базовые", 7.50, 0, True, False),
+]
+
+
+def _build_order_items(now, paid_order_ids: list[str]) -> list[dict[str, object]]:
+    product_ids = [row[0] for row in _PRODUCT_SEED]
+    rows: list[dict[str, object]] = []
+    for idx, order_id in enumerate(paid_order_ids):
+        item_count = (idx % 4) + 1
+        for item_offset in range(item_count):
+            product_idx = (idx * 3 + item_offset * 5) % len(product_ids)
+            product_id, _title, _category, price, _stock, _has_photo, _published = _PRODUCT_SEED[product_idx]
+            qty = ((idx + item_offset) % 3) + 1
+            unit_price = price if price > 0 else float(11 + idx + item_offset)
+            rows.append(
+                {
+                    "order_id": order_id,
+                    "product_id": product_id,
+                    "qty": qty,
+                    "unit_price": round(unit_price, 2),
+                    "currency": "EUR",
+                    "created_at": now - timedelta(hours=idx + item_offset),
+                }
+            )
+    return rows
 
 
 def _alembic_config() -> Config:
@@ -163,6 +220,47 @@ async def seed_demo_data() -> None:
             if order_data["order_id"] not in existing_order_ids
         ]
 
+        existing_products = await session.execute(select(OwnerbotDemoProduct.product_id))
+        existing_product_ids = {row[0] for row in existing_products.all()}
+        products = [
+            OwnerbotDemoProduct(
+                product_id=product_id,
+                title=title,
+                category=category,
+                price=price,
+                currency="EUR",
+                stock_qty=stock_qty,
+                has_photo=has_photo,
+                published=published,
+            )
+            for product_id, title, category, price, stock_qty, has_photo, published in _PRODUCT_SEED
+            if product_id not in existing_product_ids
+        ]
+
+        paid_order_ids = [
+            order_data["order_id"]
+            for order_data in demo_orders
+            if order_data.get("status") == "paid" or order_data.get("payment_status") == "paid"
+        ]
+        existing_order_items = await session.execute(select(OwnerbotDemoOrderItem.order_id, OwnerbotDemoOrderItem.product_id))
+        existing_item_keys = {(row[0], row[1]) for row in existing_order_items.all()}
+        order_items = []
+        for item in _build_order_items(now, paid_order_ids):
+            item_key = (item["order_id"], item["product_id"])
+            if item_key in existing_item_keys:
+                continue
+            existing_item_keys.add(item_key)
+            order_items.append(
+                OwnerbotDemoOrderItem(
+                    order_id=item["order_id"],
+                    product_id=item["product_id"],
+                    qty=item["qty"],
+                    unit_price=item["unit_price"],
+                    currency=item["currency"],
+                    created_at=item["created_at"],
+                )
+            )
+
         existing_threads = await session.execute(select(OwnerbotDemoChatThread.thread_id))
         existing_thread_ids = {row[0] for row in existing_threads.all()}
         threads = [
@@ -214,4 +312,6 @@ async def seed_demo_data() -> None:
         session.add_all(kpi_rows)
         session.add_all(orders)
         session.add_all(threads)
+        session.add_all(products)
+        session.add_all(order_items)
         await session.commit()

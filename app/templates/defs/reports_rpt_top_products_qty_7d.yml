@@ -1,0 +1,14 @@
+template_id: RPT_TOP_PRODUCTS_QTY_7D
+category: reports
+title: Топ товаров (штуки 7д)
+button_text: Топ товаров (шт)
+kind: REPORT
+tool_name: top_products
+order: 130
+default_payload:
+  days: 7
+  metric: qty
+  direction: top
+  group_by: product
+  limit: 10
+inputs: []

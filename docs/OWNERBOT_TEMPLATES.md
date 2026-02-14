@@ -76,7 +76,7 @@
 * **RPT_COMPARE_CUSTOM** — Сравнить два периода (ввод дат)
 
   * Вывод: Δ выручки/заказов/AOV, топ причин изменения (если есть метки)
-  * Tools: `kpi_snapshot(periodA)`, `kpi_snapshot(periodB)`
+  * Tools: `kpi_compare(preset=wow|mom|custom)`
   * Confirm: нет
 
 ### Выручка и тренды
@@ -92,9 +92,9 @@
 
 * **RPT_TOP_PRODUCTS_7D** — Топ товаров за 7 дней
 * **RPT_BOTTOM_PRODUCTS_7D** — Анти‑топ товаров за 7 дней
-* **RPT_TOP_CATEGORIES_30D** — Топ категорий за 30 дней
+* **RPT_TOP_CATEGORIES_30D** — Топ категорий
 
-  * Tools: `sales_top_products`, `sales_top_categories` (если есть) или агрегат через `orders_search`
+  * Tools: `top_products(group_by=category, metric=revenue)`
   * Confirm: нет
 
 ### Операционные отчёты
@@ -102,7 +102,7 @@
 * **RPT_STUCK_ORDERS_SUMMARY** — Сводка зависших заказов
 * **RPT_UNANSWERED_CHATS_SUMMARY** — Сводка чатов без ответа
 
-  * Tools: `orders_stuck`, `chats_unanswered(threshold=...)`
+  * Tools: `orders_stuck`, `chats_unanswered(threshold=...)`, `team_queue_summary`
   * Confirm: нет
 
 ### Еженедельный PDF (владельческий)
@@ -235,6 +235,7 @@
 * **PRD_NO_VIDEO** — Товары без видео
 * **PRD_NO_PRICE** — Товары без цены
 * **PRD_LOW_STOCK** — Низкие остатки
+* **PRD_INVENTORY_STATUS** — Диагностика каталога (остатки/фото/цены/публикация)
 
 ### Аналитика товаров
 

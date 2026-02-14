@@ -1,0 +1,14 @@
+template_id: RPT_TOP_PRODUCTS_7D
+category: reports
+title: Топ товаров (выручка 7д)
+button_text: Топ товаров (выручка)
+kind: REPORT
+tool_name: top_products
+order: 120
+default_payload:
+  days: 7
+  metric: revenue
+  direction: top
+  group_by: product
+  limit: 10
+inputs: []

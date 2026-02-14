@@ -65,6 +65,30 @@ def upgrade() -> None:
         sa.Column("aov", sa.Numeric(12, 2), nullable=False),
     )
     op.create_table(
+        "ownerbot_demo_products",
+        sa.Column("product_id", sa.String(length=64), primary_key=True),
+        sa.Column("title", sa.String(length=255), nullable=False),
+        sa.Column("category", sa.String(length=64), nullable=False),
+        sa.Column("price", sa.Numeric(12, 2), nullable=False),
+        sa.Column("currency", sa.String(length=8), nullable=False),
+        sa.Column("stock_qty", sa.Integer(), nullable=False),
+        sa.Column("has_photo", sa.Boolean(), nullable=False, server_default=sa.true()),
+        sa.Column("published", sa.Boolean(), nullable=False, server_default=sa.true()),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+    )
+    op.create_table(
+        "ownerbot_demo_order_items",
+        sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
+        sa.Column("order_id", sa.String(length=64), nullable=False),
+        sa.Column("product_id", sa.String(length=64), nullable=False),
+        sa.Column("qty", sa.Integer(), nullable=False),
+        sa.Column("unit_price", sa.Numeric(12, 2), nullable=False),
+        sa.Column("currency", sa.String(length=8), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+    )
+
+    op.create_table(
         "ownerbot_demo_chat_threads",
         sa.Column("thread_id", sa.String(length=64), primary_key=True),
         sa.Column("customer_id", sa.String(length=64), nullable=False),
@@ -118,8 +142,39 @@ def upgrade() -> None:
         ["customer_phone"],
     )
 
+    op.create_index(
+        "idx_ownerbot_demo_products_category",
+        "ownerbot_demo_products",
+        ["category"],
+    )
+    op.create_index(
+        "idx_ownerbot_demo_products_published",
+        "ownerbot_demo_products",
+        ["published"],
+    )
+    op.create_index(
+        "idx_ownerbot_demo_products_stock_qty",
+        "ownerbot_demo_products",
+        ["stock_qty"],
+    )
+    op.create_index(
+        "idx_ownerbot_demo_order_items_order_id",
+        "ownerbot_demo_order_items",
+        ["order_id"],
+    )
+    op.create_index(
+        "idx_ownerbot_demo_order_items_product_id",
+        "ownerbot_demo_order_items",
+        ["product_id"],
+    )
+
 
 def downgrade() -> None:
+    op.drop_index("idx_ownerbot_demo_order_items_product_id", table_name="ownerbot_demo_order_items")
+    op.drop_index("idx_ownerbot_demo_order_items_order_id", table_name="ownerbot_demo_order_items")
+    op.drop_index("idx_ownerbot_demo_products_stock_qty", table_name="ownerbot_demo_products")
+    op.drop_index("idx_ownerbot_demo_products_published", table_name="ownerbot_demo_products")
+    op.drop_index("idx_ownerbot_demo_products_category", table_name="ownerbot_demo_products")
     op.drop_index("idx_ownerbot_demo_orders_customer_phone", table_name="ownerbot_demo_orders")
     op.drop_index("idx_ownerbot_demo_orders_status_created_at", table_name="ownerbot_demo_orders")
     op.drop_index("idx_ownerbot_action_log_correlation_id", table_name="ownerbot_action_log")
@@ -129,6 +184,8 @@ def downgrade() -> None:
     op.drop_index("idx_ownerbot_audit_events_event_type_occurred_at", table_name="ownerbot_audit_events")
     op.drop_index("idx_ownerbot_audit_events_occurred_at", table_name="ownerbot_audit_events")
     op.drop_table("ownerbot_demo_chat_threads")
+    op.drop_table("ownerbot_demo_order_items")
+    op.drop_table("ownerbot_demo_products")
     op.drop_table("ownerbot_demo_kpi_daily")
     op.drop_table("ownerbot_demo_orders")
     op.drop_table("ownerbot_audit_events")
