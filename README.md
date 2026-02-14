@@ -1,144 +1,192 @@
 # OwnerBot (SIS Analytics & Control Layer)
 
 OwnerBot — отдельный бот/сервис поверх SIS, который:
-- читает события/метрики SIS (orders, payments, access, autonudge, content renew),
-- даёт владельцу отчёты, прогнозы, алерты,
-- управляет “верхними” настройками бизнеса (policy/config), не ломая SIS.
+- читает события/метрики SIS (orders, payments, access, renew, sales health),
+- даёт владельцу **быстрые отчёты** (включая графики/опц. PDF),
+- умеет **делать действия** (Action Tools) безопасно: *preview → confirm → commit*,
+- остаётся **автономным** (OwnerBot не должен падать, если SIS перезапустили/сломали).
+
+> OwnerBot не “думает вместо владельца”. Он убирает рутину, не врёт и не делает коммиты без явного подтверждения.
+
+---
 
 ## What’s inside
+
 - **AGENTS.md** — как работать с Codex/Qoder, роли, чек-листы, правила PR.
-- **docs/** — база знаний и контракты:
-  - PROJECT_BASE.md — контекст SIS и границы.
-  - OWNER_BOT_BASE.md — что такое OwnerBot, архитектура, модули, роадмап.
-  - OWNERBOT_TECH_BASE.md — техбаза OwnerBot (пакеты, инфраструктура, режимы).
-  - OWNERBOT_TOOLS.md — контракты ToolRequest/ToolResponse и список tools v1.
-  - SHARED_CONTRACTS.md — общие контракты данных/событий/идентификаторов.
-  - UI_STATE_POLICY.md — правила UI/состояний (важно для SIS, чтобы не плодить ад).
-  - ACCESS_MODEL.md — модель доступа (Gate + Levels + Content + Renew).
+- **docs/** — база знаний и контракты (обязательны к чтению перед изменениями):
 
-## Operating principles
-- OwnerBot **не зависит** от релизов SIS и должен жить автономно.
-- Любые интеграции с SIS — через **явные контракты** (docs/SHARED_CONTRACTS.md).
-- Никаких “рефакторингов ради красоты” в боевом коде: только хирургия, только тестами.
+### Start here (core)
+- `docs/OWNER_BOT_BASE.md` — что такое OwnerBot, границы и роадмап.
+- `docs/OWNERBOT_TECH_BASE.md` — техбаза (инфра, режимы, окружение).
+- `docs/OWNERBOT_TOOLS.md` — контракт ToolRequest/ToolResponse + реестр tools.
+- `docs/OWNERBOT_ACTIONS_MASTER.md` — **единая модель действий** (ACTION pipeline, idempotency, audit).
+- `docs/OWNERBOT_TEMPLATES.md` — каталог **шаблонов** (кнопки/сценарии + voice mapping).
 
-## Workflow (PR discipline)
-1. Прочитать **AGENTS.md** (обязательно).
-2. Любая работа — через PR с названием вида:
-   - `PR-OWNERBOT-XX: <short summary>`
-3. Любые изменения контрактов:
+### SIS integration (contracts)
+- `docs/OWNERBOT_SIS_ACTIONS_CONTRACT.md` — **канонический** контракт SIS Actions API (как *должно быть*).
+- `docs/OWNERBOT_SIS_ACTIONS_CONTRACT_IMPLEMENTED_QODER.md` — контракт “как реализовано” (снято из кода SIS).
+- `docs/SHARED_CONTRACTS.md` — общие идентификаторы/форматы (межсервисные контракты).
+- `docs/PROJECT_BASE.md` — контекст SIS и границы.
+
+### Ops / UI / audits
+- `docs/UI_STATE_POLICY.md` — правила UI/состояний (важно, чтобы не плодить ад).
+- `docs/ACCESS_MODEL.md` — модель доступа (Gate/Levels/Content/Renew).
+- `docs/OWNERBOT_PROD_AUDIT.md` — прод-аудит/риски/жёсткие P0/P1 заметки.
+- `docs/OWNERBOT_LLM_PROMPT.md` — structured system prompt / политика планировщика.
+- `docs/SIS_MASTER_FX_OWNERBOT_PLAN.md` — мастер-план FX/репрайса и связки SIS↔OwnerBot.
+
+---
+
+## Operating principles (не ломать)
+
+1) **OwnerBot автономен.** SIS может падать/пересобираться, OwnerBot живёт.
+2) Любая интеграция с SIS — через **явные контракты** (docs/**).
+3) Любые изменения контрактов:
    - сначала правим docs/**,
    - потом код,
    - потом тесты и проверка baseline/boot.
+4) **Write-операции только через ACTION pipeline** (preview → confirm → commit)  
+   см. `docs/OWNERBOT_ACTIONS_MASTER.md`.
 
-## Status
-- Repo содержит автономный MVP OwnerBot (DEMO режим, tools-first каркас).
+---
+
+## Status (текущее)
+
+### Templates: Prices (SIS actions)
+- Added Owner Console templates branch: `Шаблоны → Цены` with quick actions for:
+  - global bump `%`
+  - FX reprice
+  - FX rollback
+- All write flows use existing ACTION pipeline: `dry_run → confirm → commit` with idempotency/payload hash/correlation id.
+- Force-commit UX supported for anomaly previews (`⚠️ Применить несмотря на аномалию` sends `force=true`).
+- In DEMO mode tools simulate preview/commit and never change SIS data.
+
+
+- Standalone runtime: Docker Compose (Postgres + Redis + app).
+- UPSTREAM режимы: DEMO / SIS_HTTP / AUTO (+ runtime toggle при включённом флаге).
+- Presets/artifacts: графики (PNG) и weekly PDF (опционально).
+- Action tools: безопасные действия через confirm + idempotency + audit.
+- SIS gateway: read-only + actions API по контракту + shadow_check (DEMO vs SIS).
+
+---
 
 ## Quick Start (Docker Compose)
-1. Скопируй env файл:
-   ```bash
-   cp ENV.example .env
-   ```
-2. Укажи обязательные переменные:
-   - `BOT_TOKEN` — Telegram bot token
-   - `OWNER_IDS` — список owner user_id (через запятую)
-   - `MANAGER_CHAT_IDS` — список chat_id для notify_team (через запятую)
-3. Если у тебя уже была создана БД и ты подтянул PR-05E (baseline indexes), пересобери volume:
-   ```bash
-   docker compose down -v
-   ```
-4. Запусти:
-   ```bash
-   docker compose up --build
-   ```
-5. Добавь бота в нужные чаты/каналы/группы, иначе Telegram вернёт ошибку отправки.
+
+1) Скопируй env:
+```bash
+cp ENV.example .env
+```
+
+2) Минимум:
+- `BOT_TOKEN` — Telegram bot token
+- `OWNER_IDS` — allowlist владельцев (CSV)
+
+Опционально для notify_team:
+- `MANAGER_CHAT_IDS` — куда можно отправлять сообщения (CSV)
+
+3) Запуск:
+```bash
+docker compose up --build
+```
+
+4) Проверка:
+- `/start` — статус (DB/Redis/режим)
+- `/systems` — health обзор OwnerBot/SIS/(future SizeBot)
+- `/shadow_check` — DEMO vs SIS сверка
+
+> Если ты менял baseline/migrations и уже есть “грязные” volume’ы:  
+> `docker compose down -v` (осознанно, удалит данные OwnerBot).
+
+---
 
 ## Local development
-1. Create venv:
-   ```bash
-   python -m venv .venv
-   ```
-2. Activate:
-   ```bash
-   . .venv/bin/activate
-   ```
-   Windows PowerShell:
-   ```powershell
-   .venv\Scripts\Activate.ps1
-   ```
-3. Install deps:
-   ```bash
-   pip install -r requirements.txt
-   ```
 
-## Running tests
-- Local:
-  ```bash
-  pytest -q
-  ```
-- Docker:
-  ```bash
-  docker compose run --rm ownerbot_app pytest -q
-  ```
+Требования: **Python 3.12 (предпочтительно)**, допустимо 3.11+.
+Ключевые пины зависимостей: `aiogram==3.25.0`, `pydantic>=2.12,<2.13`, `pydantic-settings==2.12.0`.
 
-## ENV vars (минимум)
-- `BOT_TOKEN` — обязательный токен бота.
-- `OWNER_IDS` — owner allowlist.
-- `DATABASE_URL` — Postgres для OwnerBot.
-- `REDIS_URL` — Redis для OwnerBot.
-- `UPSTREAM_MODE` — `DEMO` (по умолчанию), `SIS_HTTP`, `AUTO`.
-- `SIS_BASE_URL` — базовый URL SIS ownerbot gateway.
-- `SIS_OWNERBOT_API_KEY` — API ключ заголовка `X-API-Key`.
-- `SIS_TIMEOUT_SEC` / `SIS_MAX_RETRIES` / `SIS_RETRY_BACKOFF_BASE_SEC` — таймаут/ретраи SIS HTTP.
-- `UPSTREAM_RUNTIME_TOGGLE_ENABLED` — включает runtime override режима.
-- `UPSTREAM_REDIS_KEY` — redis key для runtime upstream mode.
-- `DIAGNOSTICS_ENABLED` — включает `/systems` и диагностики (по умолчанию `true`).
-- `SHADOW_CHECK_ENABLED` — включает `/shadow_check` (по умолчанию `true`).
-- `SIS_CONTRACT_CHECK_ENABLED` — включает лёгкий контракт-чек SIS в `/systems` (по умолчанию `true`).
-- `SIZEBOT_BASE_URL` / `SIZEBOT_API_KEY` — задел для будущего health-check SizeBot.
-- `SIZEBOT_CHECK_ENABLED` — включает заглушку проверки SizeBot (по умолчанию `false`).
-- `SHADOW_AUTO_ON_TOOL_CALLS` — флаг будущей авто-сверки на tool call (по умолчанию `false`).
-- `ASR_PROVIDER` — `mock` (default) или `openai` для реального ASR.
-- `OPENAI_API_KEY` — обязателен при `ASR_PROVIDER=openai`.
-- `OPENAI_ASR_MODEL` — модель распознавания (по умолчанию `gpt-4o-mini-transcribe`).
-- `OPENAI_LLM_MODEL` — модель планировщика интентов (например `gpt-4.1-mini`).
-- `OPENAI_BASE_URL` — base URL OpenAI API (по умолчанию `https://api.openai.com`).
-- `LLM_PROVIDER` — `OFF` (default), `OPENAI`, `MOCK`.
-- `LLM_TIMEOUT_SECONDS` — таймаут вызова LLM planner.
-- `LLM_MAX_INPUT_CHARS` — ограничение длины входного текста для planner.
-- `LLM_ALLOWED_ACTION_TOOLS` — CSV allowlist action-tools для LLM (по умолчанию `notify_team,flag_order`).
-- `ASR_TIMEOUT_SEC` — таймаут ASR запроса (сек).
-- `ASR_MAX_RETRIES` — число ретраев для 429/5xx.
-- `ASR_RETRY_BACKOFF_BASE_SEC` — базовый backoff (сек).
-- `ASR_CONVERT_FORMAT` — формат конверсии `wav`/`webm` для voice.
+```bash
+python -m venv .venv
+. .venv/bin/activate
+pip install -r requirements.txt
+pytest -q
+```
 
-## Security / Access gate
-- `OWNER_IDS` — единственный allowlist для доступа к OwnerBot.
-- Все non-owner updates (message/callback) блокируются middleware `OwnerGate`.
-- По умолчанию deny остаётся тихим (без ответа пользователю), но попытки пишутся в audit event `access_denied`.
-- Audit deny throttled по ключу `deny:{update_kind}:{user_id}` с TTL `ACCESS_DENY_AUDIT_TTL_SEC` (по умолчанию 60 сек), чтобы не спамить таблицу.
-- `ACCESS_DENY_AUDIT_ENABLED` — включает/выключает запись deny-аудита (default: `true`).
-- `ACCESS_DENY_NOTIFY_ONCE` — опциональный one-shot ответ `Нет доступа.` только в private chat и не чаще одного раза за TTL (default: `false`).
+Docker tests:
+```bash
+docker compose run --rm ownerbot_app pytest -q
+```
 
-## DEMO mode
-- По умолчанию `UPSTREAM_MODE=DEMO`.
-- OwnerBot использует локальные demo таблицы, seeds при старте.
-- В `AUTO` режиме OwnerBot делает ping SIS и переключается на DEMO при недоступности upstream.
-- Runtime toggle команды (owner-only): `/upstream`, `/upstream_demo`, `/upstream_sis`, `/upstream_auto`, `/sis_check`.
+---
+
+## ENV vars (критичное)
+
+### Owner access
+- `OWNER_IDS` — единственный allowlist доступа к OwnerBot.
+
+### OwnerBot storage
+- `DATABASE_URL` — Postgres
+- `REDIS_URL` — Redis
+
+### Upstream (SIS)
+- `UPSTREAM_MODE` — `DEMO` (default), `SIS_HTTP`, `AUTO`
+- `SIS_BASE_URL` — base URL SIS
+- `SIS_OWNERBOT_API_KEY` — ключ для SIS gateway (read-only и/или actions, в зависимости от конфигурации SIS)
+- `SIS_TIMEOUT_SEC`, `SIS_MAX_RETRIES`, `SIS_RETRY_BACKOFF_BASE_SEC`
+
+**Важно про Actions:**  
+SIS Actions API использует заголовок **`X-OWNERBOT-KEY`** и правила allowlist’ов (shop/actor).  
+См. `docs/OWNERBOT_SIS_ACTIONS_CONTRACT.md`.
+
+### Runtime toggle (optional)
+- `UPSTREAM_RUNTIME_TOGGLE_ENABLED`
+- `UPSTREAM_REDIS_KEY`
+
+### ASR / LLM (optional)
+- `ASR_PROVIDER` (`mock`/`openai`), `OPENAI_API_KEY`, `OPENAI_ASR_MODEL`
+- `LLM_PROVIDER` (`OFF`/`OPENAI`/`MOCK`), `OPENAI_LLM_MODEL`, `LLM_TIMEOUT_SECONDS`
+- `LLM_ALLOWED_ACTION_TOOLS` — allowlist action-tools для планировщика
+
+---
+
+## Templates vs Voice
+
+- **Templates** (кнопки/инпуты) закрывают “частые” задачи владельца: KPI, тренды, репрайс, bump, скидки, скрытие товаров, notify_team.
+- **Voice** — для нестандартных/комбинированных запросов (но commit всё равно только через confirm).
+
+Полный каталог: `docs/OWNERBOT_TEMPLATES.md`.
+
+---
+
+## Action tools (write) — как добавлять
+
+Коротко:
+1) Сперва обновляешь docs: `OWNERBOT_ACTIONS_MASTER.md` + `OWNERBOT_TEMPLATES.md` (если это шаблон).
+2) Реализуешь tool: `dry_run()` и `commit()`.
+3) Подключаешь в registry.
+4) Тесты: tamper-block, idempotency, deterministic duplicates.
+5) Audit + correlation_id обязателен.
+
+Подробно: `docs/OWNERBOT_ACTIONS_MASTER.md`.
+
+---
+
+## Workflow (PR discipline)
+
+1) Прочитать **AGENTS.md** (обязательно).
+2) Любая работа — через PR:
+   - `PR-OWNERBOT-XX: <short summary>`
+3) Любые “косметические” рефакторы без причины запрещены.  
+   Только изменения с пользой + тесты + docs.
+
+---
 
 ## Quick links
+
 - Entry point: **AGENTS.md**
-- OwnerBot scope: **docs/OWNER_BOT_BASE.md**
+- Action model: **docs/OWNERBOT_ACTIONS_MASTER.md**
+- Templates: **docs/OWNERBOT_TEMPLATES.md**
+- SIS Actions Contract (canonical): **docs/OWNERBOT_SIS_ACTIONS_CONTRACT.md**
+- SIS Actions Contract (implemented): **docs/OWNERBOT_SIS_ACTIONS_CONTRACT_IMPLEMENTED_QODER.md**
 - Tech base: **docs/OWNERBOT_TECH_BASE.md**
-- Tools contract: **docs/OWNERBOT_TOOLS.md**
-- Shared contracts: **docs/SHARED_CONTRACTS.md**
-
-
-## Artifacts (PR-06)
-- PNG chart preset for revenue trend: `/trend [N]` (default `14`) and phrases like `график выручки 7 дней`.
-- Weekly DEMO PDF preset: `/weekly_pdf` (aggregates `revenue_trend`, `kpi_snapshot`, `orders_search status=stuck`, `chats_unanswered`).
-- Artifacts are sent directly in Telegram as photo/document while textual tool summary is preserved.
-
-
-## Diagnostics commands
-- `/systems` — owner-only health обзор OwnerBot/SIS/SizeBot (placeholder).
-- `/shadow_check` — owner-only DEMO vs SIS сверка по базовым пресетам (KPI/trend/orders).
+- Tools catalog: **docs/OWNERBOT_TOOLS.md**
+- Prod audit: **docs/OWNERBOT_PROD_AUDIT.md**
