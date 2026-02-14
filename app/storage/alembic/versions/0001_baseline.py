@@ -43,6 +43,7 @@ def upgrade() -> None:
         sa.Column("currency", sa.String(length=8), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column("customer_id", sa.String(length=64), nullable=False),
+        sa.Column("coupon_code", sa.String(length=64), nullable=True),
         sa.Column("customer_phone", sa.String(length=32), nullable=True),
         sa.Column("payment_status", sa.String(length=32), nullable=True),
         sa.Column("paid_at", sa.DateTime(timezone=True), nullable=True),
@@ -73,6 +74,8 @@ def upgrade() -> None:
         sa.Column("currency", sa.String(length=8), nullable=False),
         sa.Column("stock_qty", sa.Integer(), nullable=False),
         sa.Column("has_photo", sa.Boolean(), nullable=False, server_default=sa.true()),
+        sa.Column("has_video", sa.Boolean(), nullable=False, server_default=sa.true()),
+        sa.Column("return_flagged", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("published", sa.Boolean(), nullable=False, server_default=sa.true()),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
@@ -86,6 +89,21 @@ def upgrade() -> None:
         sa.Column("unit_price", sa.Numeric(12, 2), nullable=False),
         sa.Column("currency", sa.String(length=8), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+    )
+
+    op.create_table(
+        "ownerbot_demo_coupons",
+        sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
+        sa.Column("code", sa.String(length=64), nullable=False, unique=True),
+        sa.Column("percent_off", sa.Integer(), nullable=True),
+        sa.Column("amount_off", sa.Numeric(12, 2), nullable=True),
+        sa.Column("active", sa.Boolean(), nullable=False, server_default=sa.true()),
+        sa.Column("max_uses", sa.Integer(), nullable=True),
+        sa.Column("used_count", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("starts_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("ends_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
 
     op.create_table(
@@ -184,6 +202,7 @@ def downgrade() -> None:
     op.drop_index("idx_ownerbot_audit_events_event_type_occurred_at", table_name="ownerbot_audit_events")
     op.drop_index("idx_ownerbot_audit_events_occurred_at", table_name="ownerbot_audit_events")
     op.drop_table("ownerbot_demo_chat_threads")
+    op.drop_table("ownerbot_demo_coupons")
     op.drop_table("ownerbot_demo_order_items")
     op.drop_table("ownerbot_demo_products")
     op.drop_table("ownerbot_demo_kpi_daily")

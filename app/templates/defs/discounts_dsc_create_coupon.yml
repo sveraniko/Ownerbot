@@ -1,0 +1,19 @@
+template_id: DSC_CREATE_COUPON
+category: discounts
+title: Создать/обновить купон
+button_text: Создать купон
+kind: ACTION
+tool_name: create_coupon
+order: 52
+default_payload:
+  active: true
+inputs:
+  - key: code
+    prompt: Код купона (например WELCOME10)
+    parser: str
+  - key: percent_off
+    prompt: Процент скидки 1..95
+    parser: int
+  - key: max_uses
+    prompt: Лимит использований (целое число)
+    parser: int

@@ -1,0 +1,12 @@
+template_id: PRD_LOW_STOCK
+category: products
+title: Низкие остатки
+button_text: Низкие остатки
+kind: REPORT
+tool_name: inventory_status
+order: 64
+default_payload:
+  section: low_stock
+  low_stock_lte: 5
+  limit: 20
+inputs: []

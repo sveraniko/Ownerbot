@@ -1,0 +1,9 @@
+template_id: DSC_STATUS
+category: discounts
+title: Сводка купонов
+button_text: Сводка купонов
+kind: REPORT
+tool_name: coupons_status
+order: 50
+default_payload: {}
+inputs: []

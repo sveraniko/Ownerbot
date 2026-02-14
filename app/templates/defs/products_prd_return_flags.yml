@@ -1,0 +1,12 @@
+template_id: PRD_RETURN_FLAGS
+category: products
+title: Флаги возвратов
+button_text: Флаги возвратов
+kind: REPORT
+tool_name: inventory_status
+order: 65
+default_payload:
+  section: return_flags
+  low_stock_lte: 5
+  limit: 20
+inputs: []

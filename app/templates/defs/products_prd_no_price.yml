@@ -1,0 +1,12 @@
+template_id: PRD_NO_PRICE
+category: products
+title: Товары без цены
+button_text: Без цены
+kind: REPORT
+tool_name: inventory_status
+order: 62
+default_payload:
+  section: missing_price
+  low_stock_lte: 5
+  limit: 20
+inputs: []
