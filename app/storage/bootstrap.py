@@ -45,23 +45,102 @@ async def seed_demo_data() -> None:
 
         existing_orders = await session.execute(select(OwnerbotDemoOrder.order_id))
         existing_order_ids = {row[0] for row in existing_orders.all()}
+        now = utcnow()
         demo_orders = [
-            {"order_id": "OB-1001", "status": "pending", "amount": 120.00},
-            {"order_id": "OB-1002", "status": "paid", "amount": 89.50},
+            {
+                "order_id": "OB-1001",
+                "status": "pending",
+                "amount": 120.00,
+                "customer_phone": "+491700000001",
+                "payment_status": "pending",
+                "shipping_status": "pending",
+                "created_at": now - timedelta(hours=8),
+                "ship_due_at": now - timedelta(hours=2),
+            },
+            {
+                "order_id": "OB-1002",
+                "status": "paid",
+                "amount": 89.50,
+                "customer_phone": "+491700000002",
+                "payment_status": "paid",
+                "paid_at": now - timedelta(hours=10),
+                "shipping_status": "pending",
+                "created_at": now - timedelta(hours=12),
+                "ship_due_at": now - timedelta(hours=3),
+            },
             {
                 "order_id": "OB-1003",
                 "status": "stuck",
                 "amount": 199.99,
+                "payment_status": "failed",
+                "shipping_status": "pending",
+                "created_at": now - timedelta(hours=5),
                 "flagged": False,
                 "flag_reason": None,
             },
-            {"order_id": "OB-1004", "status": "paid", "amount": 45.00},
-            {"order_id": "OB-1005", "status": "stuck", "amount": 310.10},
-            {"order_id": "OB-1006", "status": "pending", "amount": 150.75},
-            {"order_id": "OB-1007", "status": "paid", "amount": 59.99},
-            {"order_id": "OB-1008", "status": "stuck", "amount": 220.40},
-            {"order_id": "OB-1009", "status": "paid", "amount": 95.25},
-            {"order_id": "OB-1010", "status": "paid", "amount": 180.00},
+            {
+                "order_id": "OB-1004",
+                "status": "paid",
+                "amount": 45.00,
+                "customer_phone": "+491700000004",
+                "payment_status": "paid",
+                "paid_at": now - timedelta(hours=6),
+                "shipping_status": "shipped",
+                "ship_due_at": now - timedelta(hours=5),
+                "shipped_at": now - timedelta(hours=4),
+            },
+            {
+                "order_id": "OB-1005",
+                "status": "stuck",
+                "amount": 310.10,
+                "payment_status": "pending",
+                "shipping_status": "pending",
+                "created_at": now - timedelta(hours=9),
+            },
+            {
+                "order_id": "OB-1006",
+                "status": "pending",
+                "amount": 150.75,
+                "payment_status": "pending",
+                "shipping_status": "pending",
+                "created_at": now - timedelta(hours=1),
+            },
+            {
+                "order_id": "OB-1007",
+                "status": "paid",
+                "amount": 59.99,
+                "payment_status": "paid",
+                "paid_at": now - timedelta(hours=16),
+                "shipping_status": "pending",
+                "created_at": now - timedelta(hours=20),
+                "ship_due_at": now - timedelta(hours=8),
+            },
+            {
+                "order_id": "OB-1008",
+                "status": "stuck",
+                "amount": 220.40,
+                "payment_status": "failed",
+                "shipping_status": "pending",
+                "created_at": now - timedelta(hours=7),
+            },
+            {
+                "order_id": "OB-1009",
+                "status": "paid",
+                "amount": 95.25,
+                "customer_phone": "+491700000009",
+                "payment_status": "paid",
+                "paid_at": now - timedelta(hours=3),
+                "shipping_status": "pending",
+                "ship_due_at": now + timedelta(hours=4),
+            },
+            {
+                "order_id": "OB-1010",
+                "status": "paid",
+                "amount": 180.00,
+                "payment_status": "refunded",
+                "shipping_status": "pending",
+                "created_at": now - timedelta(hours=11),
+            },
         ]
         orders: Sequence[OwnerbotDemoOrder] = [
             OwnerbotDemoOrder(
@@ -70,6 +149,13 @@ async def seed_demo_data() -> None:
                 amount=order_data["amount"],
                 currency="EUR",
                 customer_id=f"cust_{index + 1:03d}",
+                customer_phone=order_data.get("customer_phone"),
+                payment_status=order_data.get("payment_status"),
+                paid_at=order_data.get("paid_at"),
+                shipping_status=order_data.get("shipping_status"),
+                ship_due_at=order_data.get("ship_due_at"),
+                shipped_at=order_data.get("shipped_at"),
+                created_at=order_data.get("created_at", now),
                 flagged=order_data.get("flagged", False),
                 flag_reason=order_data.get("flag_reason"),
             )
@@ -79,7 +165,6 @@ async def seed_demo_data() -> None:
 
         existing_threads = await session.execute(select(OwnerbotDemoChatThread.thread_id))
         existing_thread_ids = {row[0] for row in existing_threads.all()}
-        now = utcnow()
         threads = [
             OwnerbotDemoChatThread(
                 thread_id="TH-2001",

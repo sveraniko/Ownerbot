@@ -43,6 +43,12 @@ def upgrade() -> None:
         sa.Column("currency", sa.String(length=8), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column("customer_id", sa.String(length=64), nullable=False),
+        sa.Column("customer_phone", sa.String(length=32), nullable=True),
+        sa.Column("payment_status", sa.String(length=32), nullable=True),
+        sa.Column("paid_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("shipping_status", sa.String(length=32), nullable=True),
+        sa.Column("ship_due_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("shipped_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column("flagged", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("flag_reason", sa.Text(), nullable=True),
@@ -106,8 +112,15 @@ def upgrade() -> None:
         ["status", "created_at"],
     )
 
+    op.create_index(
+        "idx_ownerbot_demo_orders_customer_phone",
+        "ownerbot_demo_orders",
+        ["customer_phone"],
+    )
+
 
 def downgrade() -> None:
+    op.drop_index("idx_ownerbot_demo_orders_customer_phone", table_name="ownerbot_demo_orders")
     op.drop_index("idx_ownerbot_demo_orders_status_created_at", table_name="ownerbot_demo_orders")
     op.drop_index("idx_ownerbot_action_log_correlation_id", table_name="ownerbot_action_log")
     op.drop_index("idx_ownerbot_action_log_tool_committed_at", table_name="ownerbot_action_log")

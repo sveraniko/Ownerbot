@@ -5,5 +5,31 @@ button_text: Массово пометить
 kind: ACTION
 tool_name: bulk_flag_order
 order: 100
-default_payload: {}
-inputs: []
+default_payload:
+  preset: stuck
+  reason: needs_attention
+  limit: 20
+inputs:
+  - key: preset
+    prompt: Выбери пресет
+    parser: str
+    presets:
+      - text: stuck
+        value: stuck
+      - text: late_ship
+        value: late_ship
+      - text: payment_issues
+        value: payment_issues
+  - key: reason
+    prompt: Введи причину
+    parser: str
+  - key: limit
+    prompt: Сколько максимум заказов пометить?
+    parser: int
+    presets:
+      - text: "10"
+        value: 10
+      - text: "20"
+        value: 20
+      - text: "50"
+        value: 50

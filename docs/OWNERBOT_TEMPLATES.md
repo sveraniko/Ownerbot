@@ -136,6 +136,22 @@
   * Tools: `orders_search` с пресетами
   * Confirm: нет
 
+### Семантика `orders_search` (payload)
+
+`orders_search` поддерживает ключи:
+- `q?: str` — поиск подстрокой (в DEMO: `customer_phone`, `order_id`, `customer_id`, case-insensitive)
+- `status?: str` — точный матч по `status`
+- `preset?: "stuck" | "late_ship" | "payment_issues"`
+- `flagged?: bool`
+- `limit: int` (по умолчанию `20`, диапазон `1..200`)
+
+Пресеты (DEMO defaults):
+- `stuck`: `status == "stuck"` **или** `payment_status in ("pending", null)` и заказ старше `6h`.
+- `late_ship`: `payment_status == "paid"` и отправка не завершена, `ship_due_at < now`.
+- `payment_issues`: `payment_status == "failed"` **или** `payment_status == "pending"` и заказ старше `2h`.
+
+> В режимах `SIS_HTTP`/`AUTO` Orders tools пока не подключены к SIS Actions API (будет отдельный PR в SIS).
+
 ### Действия
 
 * **ORD_FLAG** — Пометить заказ (причина)

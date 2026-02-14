@@ -5,8 +5,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.storage.models import Base, OwnerbotDemoChatThread, OwnerbotDemoKpiDaily, OwnerbotDemoOrder
+from app.tools.contracts import ToolActor
+from app.tools.impl.bulk_flag_order import Payload as BulkFlagPayload, handle as bulk_flag_handle
 from app.tools.impl.chats_unanswered import Payload as ChatsPayload, handle as chats_handle
 from app.tools.impl.order_detail import Payload as OrderPayload, handle as order_handle
+from app.tools.impl.orders_search import OrdersSearchPayload, handle as orders_search_handle
 from app.tools.impl.revenue_trend import Payload as TrendPayload, handle as trend_handle
 
 
@@ -58,6 +61,11 @@ async def test_order_detail_demo():
                 amount=123.45,
                 currency="EUR",
                 customer_id="cust_999",
+                customer_phone="+491700999999",
+                payment_status="paid",
+                paid_at=datetime(2024, 1, 10, tzinfo=timezone.utc),
+                shipping_status="pending",
+                ship_due_at=datetime(2024, 1, 11, tzinfo=timezone.utc),
             )
         )
         await session.commit()
@@ -68,6 +76,8 @@ async def test_order_detail_demo():
 
     assert response.status == "ok"
     assert response.data["order_id"] == "OB-9999"
+    assert response.data["customer_phone"] == "+491700999999"
+    assert response.data["payment_status"] == "paid"
 
 
 @pytest.mark.asyncio
@@ -105,3 +115,159 @@ async def test_chats_unanswered_demo():
 
     assert response.status == "ok"
     assert response.data["count"] == 1
+
+
+async def _seed_orders(async_session):
+    now = datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
+    async with async_session() as session:
+        session.add_all(
+            [
+                OwnerbotDemoOrder(
+                    order_id="OB-LATE-1",
+                    status="paid",
+                    amount=100,
+                    currency="EUR",
+                    customer_id="cust_late_1",
+                    payment_status="paid",
+                    shipping_status="pending",
+                    ship_due_at=now - timedelta(hours=1),
+                    created_at=now - timedelta(hours=10),
+                    customer_phone="+491700111111",
+                    flagged=False,
+                ),
+                OwnerbotDemoOrder(
+                    order_id="OB-LATE-2",
+                    status="paid",
+                    amount=120,
+                    currency="EUR",
+                    customer_id="cust_late_2",
+                    payment_status="paid",
+                    shipping_status="pending",
+                    ship_due_at=now - timedelta(hours=2),
+                    created_at=now - timedelta(hours=12),
+                    flagged=False,
+                ),
+                OwnerbotDemoOrder(
+                    order_id="OB-FAILED-1",
+                    status="pending",
+                    amount=80,
+                    currency="EUR",
+                    customer_id="cust_fail_1",
+                    payment_status="failed",
+                    created_at=now - timedelta(hours=4),
+                    flagged=False,
+                ),
+                OwnerbotDemoOrder(
+                    order_id="OB-PENDING-OLD",
+                    status="pending",
+                    amount=90,
+                    currency="EUR",
+                    customer_id="cust_pending_old",
+                    payment_status="pending",
+                    created_at=now - timedelta(hours=5),
+                    flagged=False,
+                ),
+                OwnerbotDemoOrder(
+                    order_id="OB-OK-1",
+                    status="paid",
+                    amount=70,
+                    currency="EUR",
+                    customer_id="cust_ok_1",
+                    payment_status="paid",
+                    shipping_status="shipped",
+                    shipped_at=now - timedelta(hours=1),
+                    created_at=now - timedelta(hours=3),
+                    flagged=False,
+                ),
+            ]
+        )
+        await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_orders_search_find_by_phone():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    await _seed_orders(async_session)
+
+    async with async_session() as session:
+        response = await orders_search_handle(OrdersSearchPayload(q="111111", limit=20), "corr", session)
+
+    assert response.status == "ok"
+    assert response.data["count"] == 1
+    assert response.data["items"][0]["order_id"] == "OB-LATE-1"
+
+
+@pytest.mark.asyncio
+async def test_orders_search_preset_late_ship():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    await _seed_orders(async_session)
+
+    async with async_session() as session:
+        response = await orders_search_handle(OrdersSearchPayload(preset="late_ship", limit=20), "corr", session)
+
+    assert response.status == "ok"
+    ids = {item["order_id"] for item in response.data["items"]}
+    assert ids == {"OB-LATE-1", "OB-LATE-2"}
+
+
+@pytest.mark.asyncio
+async def test_orders_search_preset_payment_issues():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    await _seed_orders(async_session)
+
+    async with async_session() as session:
+        response = await orders_search_handle(OrdersSearchPayload(preset="payment_issues", limit=20), "corr", session)
+
+    assert response.status == "ok"
+    ids = {item["order_id"] for item in response.data["items"]}
+    assert ids == {"OB-FAILED-1", "OB-PENDING-OLD"}
+
+
+@pytest.mark.asyncio
+async def test_bulk_flag_order_preview_commit_and_noop():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    await _seed_orders(async_session)
+
+    async with async_session() as session:
+        preview = await bulk_flag_handle(
+            BulkFlagPayload(preset="late_ship", reason="needs_attention", limit=20, dry_run=True),
+            "corr",
+            session,
+        )
+    assert preview.status == "ok"
+    assert preview.data["status"] == "preview"
+    assert preview.data["would_apply"] is True
+
+    actor = ToolActor(owner_user_id=77)
+    async with async_session() as session:
+        commit = await bulk_flag_handle(
+            BulkFlagPayload(preset="late_ship", reason="needs_attention", limit=20, dry_run=False),
+            "corr",
+            session,
+            actor,
+        )
+    assert commit.status == "ok"
+    assert commit.data["updated_count"] == 2
+
+    async with async_session() as session:
+        noop = await bulk_flag_handle(
+            BulkFlagPayload(preset="late_ship", reason="needs_attention", limit=20, dry_run=True),
+            "corr",
+            session,
+        )
+
+    assert noop.status == "ok"
+    assert noop.data["status"] == "noop"
+    assert noop.data["would_apply"] is False

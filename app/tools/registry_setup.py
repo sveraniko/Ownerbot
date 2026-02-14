@@ -71,6 +71,6 @@ def build_registry() -> ToolRegistry:
     registry.register("sys_last_errors", "1.0", sys_last_errors.Payload, sys_last_errors.handle)
     registry.register("kpi_compare", "1.0", kpi_compare.Payload, kpi_compare.handle, is_stub=True)
     registry.register("team_queue_summary", "1.0", team_queue_summary.Payload, team_queue_summary.handle, is_stub=True)
-    registry.register("bulk_flag_order", "1.0", bulk_flag_order.Payload, bulk_flag_order.handle, is_stub=True, kind="action")
+    registry.register("bulk_flag_order", "1.0", bulk_flag_order.Payload, bulk_flag_order.handle, kind="action")
     registry.register("retrospective_last", "1.0", retrospective_last.Payload, retrospective_last.handle)
     return registry
