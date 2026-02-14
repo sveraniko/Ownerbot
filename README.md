@@ -90,9 +90,11 @@ docker compose up --build
 ```
 
 4) Проверка:
-- `/start` — статус (DB/Redis/режим)
-- `/systems` — health обзор OwnerBot/SIS/(future SizeBot)
+- `/start` — короткий runtime статус (DB/Redis/режим, ASR/LLM)
+- `/systems` — полный диагностический обзор OwnerBot/SIS/(future SizeBot) + preflight summary
 - `/shadow_check` — DEMO vs SIS сверка
+
+> Preflight запускается до старта polling: при критически сломанном env и `PREFLIGHT_FAIL_FAST=1` процесс завершится сразу с логом `preflight_failed`.
 
 > Если ты менял baseline/migrations и уже есть “грязные” volume’ы:  
 > `docker compose down -v` (осознанно, удалит данные OwnerBot).

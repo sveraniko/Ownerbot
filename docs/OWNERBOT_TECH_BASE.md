@@ -101,3 +101,17 @@ docker compose run --rm ownerbot_app pytest -q
 - Нормализация/дифф вынесены в `app/diagnostics/diff.py`: округление чисел, игнор `as_of`/`filters_hash`, compact diff top-N.
 - Аудит-события: `systems_check_started/finished`, `shadow_check_started/finished`, `shadow_mismatch`.
 - SizeBot интеграция пока не реализована: только config-gated placeholder статус.
+
+## 12) OPS / Preflight (OwnerBot-OPS-01)
+- На старте процесса выполняется preflight-валидация окружения (`app/core/preflight.py`) до создания `Bot()` и до bootstrap/migrations.
+- Флаг `PREFLIGHT_FAIL_FAST` (default `true`):
+  - `true` → при ошибках preflight процесс завершается с кодом `2` и логом `preflight_failed`.
+  - `false` → preflight ошибки/варнинги только логируются, startup продолжается.
+- Redis для preflight-runtime-mode считается optional: если недоступен, используется fallback `effective_mode=UPSTREAM_MODE` и добавляется warn `REDIS_UNAVAILABLE_FOR_PRECHECK`.
+- Правила fail-fast включают минимум: `BOT_TOKEN`, `OWNER_IDS`, `OPENAI_API_KEY` (для ASR/LLM openai), `ffmpeg` (если включён ogg→wav), SIS keys/url при upstream-режиме.
+- `/systems` показывает фактические runtime-поля:
+  - configured/effective/upstream override,
+  - ASR/LLM (provider/timeouts/limits/key presence),
+  - SIS/SizeBot key presence и flags,
+  - preflight summary (OK/WARN/FAIL + top codes).
+- Секреты в диагностике не печатаются: только `present/absent` и безопасные булевы признаки.

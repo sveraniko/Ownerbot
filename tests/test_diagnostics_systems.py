@@ -41,7 +41,7 @@ def test_format_systems_report_ok() -> None:
 
     text = format_systems_report(report)
     assert "OwnerBot: DB ✅ / Redis ✅" in text
-    assert "SIS: ping ✅ latency=12ms, contract=OK" in text
+    assert "SIS runtime: ping ✅ latency=12ms, contract=OK" in text
 
 
 @pytest.mark.asyncio
@@ -70,6 +70,17 @@ async def test_run_systems_check_sis_unavailable(monkeypatch: pytest.MonkeyPatch
         sis_contract_check_enabled=True,
         sizebot_check_enabled=False,
         sizebot_base_url="",
+        asr_provider="mock",
+        asr_convert_voice_ogg_to_wav=True,
+        asr_max_seconds=180,
+        asr_max_bytes=20000000,
+        asr_timeout_sec=20,
+        openai_api_key="",
+        llm_provider="OFF",
+        llm_timeout_seconds=20,
+        llm_allowed_action_tools=["notify_team"],
+        sis_ownerbot_api_key="",
+        sizebot_api_key="",
     )
     report = await run_systems_check(
         DiagnosticsContext(settings=settings, redis=None, correlation_id="corr-1", sis_client=_SisClient())
@@ -110,6 +121,17 @@ async def test_run_systems_check_contract_degraded(monkeypatch: pytest.MonkeyPat
         sis_contract_check_enabled=True,
         sizebot_check_enabled=True,
         sizebot_base_url="",
+        asr_provider="mock",
+        asr_convert_voice_ogg_to_wav=True,
+        asr_max_seconds=180,
+        asr_max_bytes=20000000,
+        asr_timeout_sec=20,
+        openai_api_key="",
+        llm_provider="OFF",
+        llm_timeout_seconds=20,
+        llm_allowed_action_tools=["notify_team"],
+        sis_ownerbot_api_key="",
+        sizebot_api_key="",
     )
     report = await run_systems_check(
         DiagnosticsContext(settings=settings, redis=None, correlation_id="corr-1", sis_client=_SisClient())
