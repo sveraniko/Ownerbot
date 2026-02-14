@@ -91,21 +91,6 @@ async def test_template_flow_dry_run_default_confirm_button(monkeypatch) -> None
     assert "✅ Подтвердить" in flat
 
 
-def test_template_parse_helpers() -> None:
-    from app.bot.routers.templates import _parse_ids, _parse_percent, _parse_stock_threshold
-
-    assert _parse_ids("a, b\nc") == ["a", "b", "c"]
-    assert _parse_percent("25") == 25
-    assert _parse_stock_threshold("9") == 9
-
-    with pytest.raises(ValueError):
-        _parse_ids("  ")
-    with pytest.raises(ValueError):
-        _parse_percent("96")
-    with pytest.raises(ValueError):
-        _parse_stock_threshold("0")
-
-
 @pytest.mark.asyncio
 async def test_template_flow_dry_run_noop_skips_confirm(monkeypatch) -> None:
     from app.bot.routers import templates
@@ -137,3 +122,73 @@ async def test_template_flow_dry_run_noop_skips_confirm(monkeypatch) -> None:
 
     _, markup = msg.calls[0]
     assert markup is None
+
+
+@pytest.mark.asyncio
+async def test_consume_step_value_runs_action_when_inputs_finished(monkeypatch) -> None:
+    from app.bot.routers import templates
+    from app.templates.catalog.models import TemplateSpec
+
+    called = []
+
+    async def _set_state(*args, **kwargs):
+        raise AssertionError("must not set next state when final step")
+
+    async def _clear_state(user_id: int):
+        called.append(("clear", user_id))
+
+    async def _run_action(message, owner_user_id, tool_name, payload):
+        called.append(("run", owner_user_id, tool_name, payload))
+
+    async def _get_state(user_id: int):
+        return {"payload_partial": {}}
+
+    monkeypatch.setattr("app.bot.routers.templates._set_state", _set_state)
+    monkeypatch.setattr("app.bot.routers.templates._clear_state", _clear_state)
+    monkeypatch.setattr("app.bot.routers.templates._run_template_action", _run_action)
+    monkeypatch.setattr("app.bot.routers.templates._get_state", _get_state)
+
+    spec = TemplateSpec(
+        template_id="X",
+        category="prices",
+        title="t",
+        button_text="b",
+        kind="ACTION",
+        tool_name="sis_prices_bump",
+        default_payload={},
+        inputs=[{"key": "bump_percent", "prompt": "p", "parser": "int"}],
+    )
+
+    msg = _DummyMessage()
+    await templates._consume_step_value(msg, 42, spec, 0, "10")
+
+    assert called[0] == ("clear", 42)
+    assert called[1][0:3] == ("run", 42, "sis_prices_bump")
+    assert called[1][3] == {"bump_percent": 10, "dry_run": True}
+
+
+@pytest.mark.asyncio
+async def test_consume_step_value_parser_error_returns_message(monkeypatch) -> None:
+    from app.bot.routers import templates
+    from app.templates.catalog.models import TemplateSpec
+
+    async def _get_state(user_id: int):
+        return {"payload_partial": {}}
+
+    monkeypatch.setattr("app.bot.routers.templates._get_state", _get_state)
+
+    spec = TemplateSpec(
+        template_id="X",
+        category="discounts",
+        title="t",
+        button_text="b",
+        kind="ACTION",
+        tool_name="sis_discounts_set",
+        default_payload={},
+        inputs=[{"key": "discount_percent", "prompt": "p", "parser": "percent_1_95"}],
+    )
+
+    msg = _DummyMessage()
+    await templates._consume_step_value(msg, 42, spec, 0, "0")
+
+    assert "Процент скидки должен быть от 1 до 95." in msg.calls[0][0]

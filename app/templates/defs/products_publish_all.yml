@@ -1,0 +1,11 @@
+template_id: PRD_PUBLISH_ALL
+category: products
+title: Опубликовать ВСЕ товары
+button_text: Опубликовать ВСЕ товары
+kind: ACTION
+tool_name: sis_products_publish
+order: 30
+default_payload:
+  status_from: ARCHIVED
+  target_status: ACTIVE
+inputs: []

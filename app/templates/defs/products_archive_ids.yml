@@ -1,0 +1,13 @@
+template_id: PRD_ARCHIVE_IDS
+category: products
+title: Снять с публикации товары (по ID)
+button_text: Снять с публикации товары (по ID)
+kind: ACTION
+tool_name: sis_products_publish
+order: 20
+default_payload:
+  target_status: ARCHIVED
+inputs:
+  - key: product_ids
+    prompt: Введи ID товаров через запятую/пробел/перенос.
+    parser: ids

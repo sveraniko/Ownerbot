@@ -1,30 +1,30 @@
 from __future__ import annotations
 
 import json
-import re
 import uuid
 
 from aiogram import F, Router
 from aiogram.filters import Command
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message, CallbackQuery
+from aiogram.types import CallbackQuery, Message
 
 from app.actions.confirm_flow import create_confirm_token
 from app.bot.keyboards.confirm import confirm_keyboard, confirm_keyboard_with_force
 from app.bot.services.action_force import requires_force_confirm
 from app.bot.services.action_preview import is_noop_preview
 from app.bot.services.tool_runner import run_tool
-from app.bot.ui.templates_keyboards import (
-    build_templates_discounts_keyboard,
-    build_templates_looks_keyboard,
-    build_templates_main_keyboard,
-    build_templates_prices_keyboard,
-    build_templates_products_keyboard,
-)
 from app.bot.ui.formatting import detect_source_tag, format_tool_response
+from app.bot.ui.templates_keyboards import (
+    build_input_presets_keyboard,
+    build_templates_category_keyboard,
+    build_templates_main_keyboard,
+    category_title,
+)
 from app.core.contracts import CANCEL_CB_PREFIX, CONFIRM_CB_PREFIX
 from app.core.logging import get_correlation_id
 from app.core.redis import get_redis
 from app.core.settings import get_settings
+from app.templates.catalog import get_template_catalog
+from app.templates.catalog.parsers import parse_input_value
 from app.tools.contracts import ToolActor, ToolTenant
 from app.tools.providers.sis_gateway import upstream_unavailable
 from app.tools.registry_setup import build_registry
@@ -34,71 +34,32 @@ router = Router()
 registry = build_registry()
 
 _STATE_KEY = "ownerbot:templates:state:"
-_MAX_IDS = 200
+_STATE_TTL_SECONDS = 900
 
 
-def _kb(rows: list[list[tuple[str, str]]]) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text=t, callback_data=c) for t, c in row] for row in rows]
-    )
+def _parse_category_page(data: str) -> tuple[str, int] | None:
+    parts = data.split(":")
+    if len(parts) != 5 or parts[0] != "tpl" or parts[1] not in {"cat", "back"} or parts[3] != "p":
+        return None
+    try:
+        return parts[2], int(parts[4])
+    except ValueError:
+        return None
 
 
-def _parse_ids(text: str) -> list[str]:
-    ids = [item.strip() for item in re.split(r"[\s,]+", text) if item.strip()]
-    if not ids:
-        raise ValueError("Нужно передать хотя бы один ID.")
-    if len(ids) > _MAX_IDS:
-        raise ValueError(f"Слишком много ID: максимум {_MAX_IDS}.")
-    return ids
-
-
-def _parse_percent(text: str) -> int:
-    value = int(text.strip())
-    if value < 1 or value > 95:
-        raise ValueError("Процент скидки должен быть от 1 до 95.")
-    return value
-
-
-def _parse_stock_threshold(text: str) -> int:
-    value = int(text.strip())
-    if value < 1 or value > 9999:
-        raise ValueError("N должен быть в диапазоне 1..9999.")
-    return value
-
-
-def _parse_settings_updates(text: str) -> dict:
-    raw = text.strip()
-    if not raw:
-        raise ValueError("Нужно передать хотя бы одно обновление настройки.")
-    if raw.startswith("{"):
-        obj = json.loads(raw)
-        if not isinstance(obj, dict):
-            raise ValueError("JSON должен быть объектом.")
-        return obj
-
-    result: dict[str, object] = {}
-    for chunk in [item.strip() for item in raw.split(",") if item.strip()]:
-        if "=" not in chunk:
-            raise ValueError("Формат: key=value, key2=value2")
-        key, value = [part.strip() for part in chunk.split("=", 1)]
-        lowered = value.lower()
-        if lowered in {"true", "false"}:
-            parsed: object = lowered == "true"
-        else:
-            try:
-                parsed = int(value)
-            except ValueError:
-                try:
-                    parsed = float(value)
-                except ValueError:
-                    parsed = value
-        result[key] = parsed
-    return result
+def _parse_preset_callback(data: str) -> tuple[str, int, int] | None:
+    parts = data.split(":")
+    if len(parts) != 5 or parts[0] != "tpl" or parts[1] != "ps":
+        return None
+    try:
+        return parts[2], int(parts[3]), int(parts[4])
+    except ValueError:
+        return None
 
 
 async def _set_state(user_id: int, state: dict) -> None:
     redis = await get_redis()
-    await redis.set(f"{_STATE_KEY}{user_id}", json.dumps(state), ex=900)
+    await redis.set(f"{_STATE_KEY}{user_id}", json.dumps(state), ex=_STATE_TTL_SECONDS)
 
 
 async def _get_state(user_id: int) -> dict | None:
@@ -114,221 +75,93 @@ async def _clear_state(user_id: int) -> None:
     await redis.delete(f"{_STATE_KEY}{user_id}")
 
 
+async def _prompt_current_step(message: Message, template_id: str, step_index: int) -> None:
+    spec = get_template_catalog().get(template_id)
+    step = spec.inputs[step_index]
+    presets = step.presets or []
+    if presets:
+        markup = build_input_presets_keyboard(template_id, step_index, [(item.text, item.value) for item in presets])
+        await message.answer(step.prompt, reply_markup=markup)
+        return
+    await message.answer(step.prompt)
+
+
 @router.message(Command("templates"))
 async def cmd_templates(message: Message) -> None:
+    await _clear_state(message.from_user.id)
     await message.answer("Шаблоны", reply_markup=build_templates_main_keyboard())
 
 
-@router.callback_query(F.data == "tpl:prices")
-async def tpl_prices(callback_query: CallbackQuery) -> None:
+@router.callback_query(F.data == "tpl:home")
+async def tpl_home(callback_query: CallbackQuery) -> None:
+    await callback_query.message.edit_text("Шаблоны", reply_markup=build_templates_main_keyboard())
+    await callback_query.answer()
+
+
+@router.callback_query(F.data.startswith("tpl:cat:") | F.data.startswith("tpl:back:"))
+async def tpl_open_category(callback_query: CallbackQuery) -> None:
+    parsed = _parse_category_page(callback_query.data)
+    if parsed is None:
+        await callback_query.answer()
+        return
+    category, page = parsed
     await callback_query.message.edit_text(
-        "Шаблоны → Цены",
-        reply_markup=build_templates_prices_keyboard(),
+        f"Шаблоны → {category_title(category)}",
+        reply_markup=build_templates_category_keyboard(category, page=page),
     )
     await callback_query.answer()
 
 
-@router.callback_query(F.data == "tpl:products")
-async def tpl_products(callback_query: CallbackQuery) -> None:
-    await callback_query.message.edit_text(
-        "Шаблоны → Товары",
-        reply_markup=build_templates_products_keyboard(),
-    )
-    await callback_query.answer()
+@router.callback_query(F.data.startswith("tpl:run:"))
+async def tpl_run(callback_query: CallbackQuery) -> None:
+    template_id = callback_query.data.split(":", 2)[-1]
+    catalog = get_template_catalog()
+    try:
+        spec = catalog.get(template_id)
+    except KeyError:
+        await callback_query.answer("Шаблон не найден", show_alert=True)
+        return
 
+    payload = dict(spec.default_payload)
+    if not spec.inputs:
+        payload["dry_run"] = spec.kind == "ACTION"
+        await _run_template_action(callback_query.message, callback_query.from_user.id, spec.tool_name, payload)
+        await callback_query.answer()
+        return
 
-@router.callback_query(F.data == "tpl:looks")
-async def tpl_looks(callback_query: CallbackQuery) -> None:
-    await callback_query.message.edit_text(
-        "Шаблоны → Товары → Луки",
-        reply_markup=build_templates_looks_keyboard(),
-    )
-    await callback_query.answer()
-
-
-@router.callback_query(F.data == "tpl:discounts")
-async def tpl_discounts(callback_query: CallbackQuery) -> None:
-    await callback_query.message.edit_text(
-        "Шаблоны → Скидки",
-        reply_markup=build_templates_discounts_keyboard(),
-    )
-    await callback_query.answer()
-
-
-@router.callback_query(F.data == "tpl:products:publish:ids")
-async def tpl_products_publish_ids(callback_query: CallbackQuery) -> None:
-    await _set_state(callback_query.from_user.id, {"tool": "sis_products_publish", "step": "product_ids", "payload": {"target_status": "ACTIVE", "dry_run": True}})
-    await callback_query.message.edit_text("Введи ID товаров через запятую/пробел/перенос.")
-    await callback_query.answer()
-
-
-@router.callback_query(F.data == "tpl:products:archive:ids")
-async def tpl_products_archive_ids(callback_query: CallbackQuery) -> None:
-    await _set_state(callback_query.from_user.id, {"tool": "sis_products_publish", "step": "product_ids", "payload": {"target_status": "ARCHIVED", "dry_run": True}})
-    await callback_query.message.edit_text("Введи ID товаров через запятую/пробел/перенос.")
-    await callback_query.answer()
-
-
-@router.callback_query(F.data == "tpl:products:publish:all")
-async def tpl_products_publish_all(callback_query: CallbackQuery) -> None:
-    await _run_template_action(callback_query.message, callback_query.from_user.id, "sis_products_publish", {"status_from": "ARCHIVED", "target_status": "ACTIVE", "dry_run": True})
-    await callback_query.answer()
-
-
-@router.callback_query(F.data == "tpl:products:archive:all")
-async def tpl_products_archive_all(callback_query: CallbackQuery) -> None:
-    await _run_template_action(callback_query.message, callback_query.from_user.id, "sis_products_publish", {"status_from": "ACTIVE", "target_status": "ARCHIVED", "dry_run": True})
-    await callback_query.answer()
-
-
-@router.callback_query(F.data == "tpl:looks:publish:ids")
-async def tpl_looks_publish_ids(callback_query: CallbackQuery) -> None:
-    await _set_state(callback_query.from_user.id, {"tool": "sis_looks_publish", "step": "look_ids", "payload": {"target_active": True, "dry_run": True}})
-    await callback_query.message.edit_text("Введи ID луков через запятую/пробел/перенос.")
-    await callback_query.answer()
-
-
-@router.callback_query(F.data == "tpl:looks:archive:ids")
-async def tpl_looks_archive_ids(callback_query: CallbackQuery) -> None:
-    await _set_state(callback_query.from_user.id, {"tool": "sis_looks_publish", "step": "look_ids", "payload": {"target_active": False, "dry_run": True}})
-    await callback_query.message.edit_text("Введи ID луков через запятую/пробел/перенос.")
-    await callback_query.answer()
-
-
-@router.callback_query(F.data == "tpl:looks:publish:all")
-async def tpl_looks_publish_all(callback_query: CallbackQuery) -> None:
-    await _run_template_action(callback_query.message, callback_query.from_user.id, "sis_looks_publish", {"is_active_from": False, "target_active": True, "dry_run": True})
-    await callback_query.answer()
-
-
-@router.callback_query(F.data == "tpl:looks:archive:all")
-async def tpl_looks_archive_all(callback_query: CallbackQuery) -> None:
-    await _run_template_action(callback_query.message, callback_query.from_user.id, "sis_looks_publish", {"is_active_from": True, "target_active": False, "dry_run": True})
-    await callback_query.answer()
-
-
-@router.callback_query(F.data == "tpl:discounts:clear:ids")
-async def tpl_discounts_clear_ids(callback_query: CallbackQuery) -> None:
-    await _set_state(callback_query.from_user.id, {"tool": "sis_discounts_clear", "step": "product_ids", "payload": {"dry_run": True}})
-    await callback_query.message.edit_text("Введи ID товаров для удаления скидок.")
-    await callback_query.answer()
-
-
-@router.callback_query(F.data == "tpl:discounts:clear:all")
-async def tpl_discounts_clear_all(callback_query: CallbackQuery) -> None:
-    await _run_template_action(callback_query.message, callback_query.from_user.id, "sis_discounts_clear", {"dry_run": True})
-    await callback_query.answer()
-
-
-@router.callback_query(F.data == "tpl:discounts:set:ids")
-async def tpl_discounts_set_ids(callback_query: CallbackQuery) -> None:
-    await _set_state(callback_query.from_user.id, {"tool": "sis_discounts_set", "step": "product_ids", "payload": {"dry_run": True}})
-    await callback_query.message.edit_text("Введи ID товаров для скидки.")
-    await callback_query.answer()
-
-
-@router.callback_query(F.data == "tpl:discounts:set:stock")
-async def tpl_discounts_set_stock(callback_query: CallbackQuery) -> None:
-    await _set_state(callback_query.from_user.id, {"tool": "sis_discounts_set", "step": "stock_lte", "payload": {"dry_run": True}})
-    await callback_query.message.edit_text("Введи N (остаток <= N), затем бот спросит процент.")
-    await callback_query.answer()
-
-
-@router.callback_query(F.data == "tpl:prices:bump")
-async def tpl_bump(callback_query: CallbackQuery) -> None:
-    await _set_state(callback_query.from_user.id, {"tool": "sis_prices_bump", "step": "bump_percent", "payload": {}})
-    await callback_query.message.edit_text(
-        "Поднять цены на %: выбери кнопку или используй /tpl_bump <число>.",
-        reply_markup=_kb([[('+5', 'tpl:set:bump:5'), ('+10', 'tpl:set:bump:10'), ('+15', 'tpl:set:bump:15'), ('+20', 'tpl:set:bump:20')]]),
-    )
-    await callback_query.answer()
-
-
-@router.callback_query(F.data.startswith("tpl:set:bump:"))
-async def tpl_bump_preset(callback_query: CallbackQuery) -> None:
-    value = callback_query.data.split(":")[-1]
-    await _run_template_action(
-        callback_query.message,
-        callback_query.from_user.id,
-        "sis_prices_bump",
-        {"bump_percent": value, "bump_additive": "0", "rounding_mode": "CEIL_INT", "dry_run": True},
-    )
-    await _clear_state(callback_query.from_user.id)
-    await callback_query.answer()
-
-
-
-
-@router.callback_query(F.data == "tpl:prices:fx:status")
-async def tpl_fx_status(callback_query: CallbackQuery) -> None:
-    await _run_template_action(callback_query.message, callback_query.from_user.id, "sis_fx_status", {})
-    await callback_query.answer()
-
-
-@router.callback_query(F.data == "tpl:prices:fx:auto")
-async def tpl_fx_auto(callback_query: CallbackQuery) -> None:
-    await _run_template_action(callback_query.message, callback_query.from_user.id, "sis_fx_reprice_auto", {"dry_run": True, "force": False, "refresh_snapshot": True})
-    await callback_query.answer()
-
-
-@router.callback_query(F.data == "tpl:prices:fx:settings")
-async def tpl_fx_settings(callback_query: CallbackQuery) -> None:
-    await _set_state(callback_query.from_user.id, {"tool": "sis_fx_settings_update", "step": "updates", "payload": {"dry_run": True}})
-    await callback_query.message.edit_text(
-        'Введи FX настройки JSON (например: {"reprice_schedule_mode":"interval","reprice_schedule_interval_hours":6}) или key=value через запятую.',
-    )
-    await callback_query.answer()
-
-@router.callback_query(F.data == "tpl:prices:fx")
-async def tpl_fx(callback_query: CallbackQuery) -> None:
     await _set_state(
         callback_query.from_user.id,
         {
-            "tool": "sis_fx_reprice",
-            "step": "input_currency",
-            "payload": {
-                "markup_percent": "0",
-                "markup_additive": "0",
-                "rounding_mode": "CEIL_INT",
-                "anomaly_threshold_pct": "25",
-            },
+            "template_id": template_id,
+            "step_index": 0,
+            "payload_partial": payload,
         },
     )
-    await callback_query.message.edit_text(
-        "FX пересчёт: выбери input_currency",
-        reply_markup=_kb([[('USD', 'tpl:set:fx:input:USD'), ('EUR', 'tpl:set:fx:input:EUR'), ('UAH', 'tpl:set:fx:input:UAH'), ('PLN', 'tpl:set:fx:input:PLN')]]),
-    )
     await callback_query.answer()
+    await _prompt_current_step(callback_query.message, template_id, 0)
 
 
-@router.callback_query(F.data.startswith("tpl:set:fx:input:"))
-async def tpl_fx_input(callback_query: CallbackQuery) -> None:
-    value = callback_query.data.split(":")[-1]
-    state = await _get_state(callback_query.from_user.id) or {}
-    payload = state.get("payload", {})
-    payload["input_currency"] = value
-    await _set_state(callback_query.from_user.id, {"tool": "sis_fx_reprice", "step": "shop_currency", "payload": payload})
-    await callback_query.message.edit_text(
-        "Выбери shop_currency",
-        reply_markup=_kb([[('EUR', 'tpl:set:fx:shop:EUR'), ('UAH', 'tpl:set:fx:shop:UAH'), ('USD', 'tpl:set:fx:shop:USD'), ('PLN', 'tpl:set:fx:shop:PLN')]]),
-    )
-    await callback_query.answer()
+@router.callback_query(F.data.startswith("tpl:ps:"))
+async def tpl_preset_value(callback_query: CallbackQuery) -> None:
+    parsed = _parse_preset_callback(callback_query.data)
+    if parsed is None:
+        await callback_query.answer()
+        return
+    template_id, step_index, preset_index = parsed
+    catalog = get_template_catalog()
+    state = await _get_state(callback_query.from_user.id)
+    if not state or state.get("template_id") != template_id or state.get("step_index") != step_index:
+        await callback_query.answer("Сессия ввода истекла. Запусти шаблон заново.", show_alert=True)
+        return
 
+    spec = catalog.get(template_id)
+    step = spec.inputs[step_index]
+    presets = step.presets or []
+    if preset_index < 0 or preset_index >= len(presets):
+        await callback_query.answer()
+        return
 
-@router.callback_query(F.data.startswith("tpl:set:fx:shop:"))
-async def tpl_fx_shop(callback_query: CallbackQuery) -> None:
-    value = callback_query.data.split(":")[-1]
-    state = await _get_state(callback_query.from_user.id) or {}
-    payload = state.get("payload", {})
-    payload["shop_currency"] = value
-    await _set_state(callback_query.from_user.id, {"tool": "sis_fx_reprice", "step": "rate_set_id", "payload": payload})
-    await callback_query.message.edit_text("Введи rate_set_id: команда /tpl_rate_set <hash>")
-    await callback_query.answer()
-
-
-@router.callback_query(F.data == "tpl:prices:rollback")
-async def tpl_rollback(callback_query: CallbackQuery) -> None:
-    await _run_template_action(callback_query.message, callback_query.from_user.id, "sis_fx_rollback", {"dry_run": True})
+    await _consume_step_value(callback_query.message, callback_query.from_user.id, spec, step_index, presets[preset_index].value)
     await callback_query.answer()
 
 
@@ -341,7 +174,11 @@ async def tpl_bump_input(message: Message) -> None:
         await message.answer("Формат: /tpl_bump 10")
         return
     await _clear_state(message.from_user.id)
-    await _run_template_action(message, message.from_user.id, "sis_prices_bump", {"bump_percent": raw, "bump_additive": "0", "rounding_mode": "CEIL_INT", "dry_run": True})
+    spec = get_template_catalog().get("PRC_BUMP")
+    payload = dict(spec.default_payload)
+    payload["bump_percent"] = raw
+    payload["dry_run"] = True
+    await _run_template_action(message, message.from_user.id, spec.tool_name, payload)
 
 
 @router.message(Command("tpl_rate_set"))
@@ -349,18 +186,16 @@ async def tpl_rate_set_input(message: Message) -> None:
     if message.text is None:
         return
     state = await _get_state(message.from_user.id)
-    if not state or state.get("tool") != "sis_fx_reprice" or state.get("step") != "rate_set_id":
+    if not state or state.get("template_id") != "PRC_FX_REPRICE" or state.get("step_index") != 2:
         await message.answer("Нет активного FX шаблона. Запусти: /templates → Шаблоны → Цены → FX пересчёт цен")
         return
     raw = message.text.replace("/tpl_rate_set", "", 1).strip()
     if not raw:
         await message.answer("Формат: /tpl_rate_set <hash>")
         return
-    payload = state.get("payload", {})
-    payload["rate_set_id"] = raw
-    payload["dry_run"] = True
-    await _clear_state(message.from_user.id)
-    await _run_template_action(message, message.from_user.id, "sis_fx_reprice", payload)
+
+    spec = get_template_catalog().get("PRC_FX_REPRICE")
+    await _consume_step_value(message, message.from_user.id, spec, 2, raw)
 
 
 @router.message(F.text)
@@ -371,48 +206,49 @@ async def templates_state_input(message: Message) -> None:
     if not state:
         return
 
-    tool = state.get("tool")
-    step = state.get("step")
-    payload = state.get("payload", {})
-    raw = message.text.strip()
+    catalog = get_template_catalog()
+    template_id = state.get("template_id")
+    step_index = state.get("step_index")
+    if not isinstance(template_id, str) or not isinstance(step_index, int):
+        await _clear_state(message.from_user.id)
+        return
 
     try:
-        if tool in {"sis_products_publish", "sis_discounts_clear", "sis_discounts_set"} and step == "product_ids":
-            payload["product_ids"] = _parse_ids(raw)
-            if tool == "sis_discounts_set":
-                await _set_state(message.from_user.id, {"tool": tool, "step": "discount_percent", "payload": payload})
-                await message.answer("Введи процент скидки 1..95")
-                return
-            await _clear_state(message.from_user.id)
-            await _run_template_action(message, message.from_user.id, tool, payload)
-            return
+        spec = catalog.get(template_id)
+    except KeyError:
+        await _clear_state(message.from_user.id)
+        return
 
-        if tool == "sis_looks_publish" and step == "look_ids":
-            payload["look_ids"] = _parse_ids(raw)
-            await _clear_state(message.from_user.id)
-            await _run_template_action(message, message.from_user.id, tool, payload)
-            return
+    await _consume_step_value(message, message.from_user.id, spec, step_index, message.text.strip())
 
-        if tool == "sis_discounts_set" and step == "stock_lte":
-            payload["stock_lte"] = _parse_stock_threshold(raw)
-            await _set_state(message.from_user.id, {"tool": tool, "step": "discount_percent", "payload": payload})
-            await message.answer("Введи процент скидки 1..95")
-            return
 
-        if tool == "sis_discounts_set" and step == "discount_percent":
-            payload["discount_percent"] = _parse_percent(raw)
-            await _clear_state(message.from_user.id)
-            await _run_template_action(message, message.from_user.id, tool, payload)
-            return
+async def _consume_step_value(message: Message, user_id: int, spec, step_index: int, raw_value: str) -> None:
+    state = await _get_state(user_id) or {}
+    payload = dict(state.get("payload_partial") or spec.default_payload)
+    step = spec.inputs[step_index]
 
-        if tool == "sis_fx_settings_update" and step == "updates":
-            payload["updates"] = _parse_settings_updates(raw)
-            await _clear_state(message.from_user.id)
-            await _run_template_action(message, message.from_user.id, tool, payload)
-            return
+    try:
+        payload[step.key] = parse_input_value(step.parser, raw_value)
     except ValueError as exc:
         await message.answer(str(exc))
         return
+
+    next_index = step_index + 1
+    if next_index < len(spec.inputs):
+        await _set_state(
+            user_id,
+            {
+                "template_id": spec.template_id,
+                "step_index": next_index,
+                "payload_partial": payload,
+            },
+        )
+        await _prompt_current_step(message, spec.template_id, next_index)
+        return
+
+    await _clear_state(user_id)
+    payload["dry_run"] = spec.kind == "ACTION"
+    await _run_template_action(message, user_id, spec.tool_name, payload)
 
 
 async def _run_template_action(message: Message, owner_user_id: int, tool_name: str, payload: dict) -> None:

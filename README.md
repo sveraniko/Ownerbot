@@ -52,14 +52,11 @@ OwnerBot — отдельный бот/сервис поверх SIS, котор
 
 ## Status (текущее)
 
-### Templates: Prices (SIS actions)
-- Added Owner Console templates branch: `Шаблоны → Цены` with quick actions for:
-  - global bump `%`
-  - FX reprice
-  - FX rollback
-- All write flows use existing ACTION pipeline: `dry_run → confirm → commit` with idempotency/payload hash/correlation id.
-- Force-commit UX supported for anomaly previews (`⚠️ Применить несмотря на аномалию` sends `force=true`).
-- In DEMO mode tools simulate preview/commit and never change SIS data.
+### Templates engine (catalog-as-data)
+- Templates UI (`/templates`) is generated from catalog defs in `app/templates/defs/*.yml`.
+- Generic templates router reads `TemplateSpec` and runs universal input-flow (Redis TTL state, parser-driven steps).
+- Existing Prices / Products / Looks / Discounts templates are migrated to defs without changing ACTION pipeline semantics (`dry_run → confirm → commit`).
+- Force-commit UX for anomalies and noop short-circuit remain unchanged.
 
 
 - Standalone runtime: Docker Compose (Postgres + Redis + app).

@@ -1,0 +1,15 @@
+template_id: DSC_SET_IDS
+category: discounts
+title: Поставить скидку % (по ID товаров)
+button_text: Поставить скидку % (по ID товаров)
+kind: ACTION
+tool_name: sis_discounts_set
+order: 30
+default_payload: {}
+inputs:
+  - key: product_ids
+    prompt: Введи ID товаров для скидки.
+    parser: ids
+  - key: discount_percent
+    prompt: Введи процент скидки 1..95
+    parser: percent_1_95

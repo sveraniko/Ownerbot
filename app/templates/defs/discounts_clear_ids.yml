@@ -1,0 +1,12 @@
+template_id: DSC_CLEAR_IDS
+category: discounts
+title: Удалить скидки (по ID товаров)
+button_text: Удалить скидки (по ID товаров)
+kind: ACTION
+tool_name: sis_discounts_clear
+order: 10
+default_payload: {}
+inputs:
+  - key: product_ids
+    prompt: Введи ID товаров для удаления скидок.
+    parser: ids

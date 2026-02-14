@@ -1,0 +1,9 @@
+template_id: PRC_FX_ROLLBACK
+category: prices
+title: Откат последнего FX
+button_text: Откат последнего FX
+kind: ACTION
+tool_name: sis_fx_rollback
+order: 60
+default_payload: {}
+inputs: []

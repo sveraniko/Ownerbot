@@ -1,0 +1,23 @@
+template_id: PRC_BUMP
+category: prices
+title: Поднять цены на %
+button_text: Поднять цены на %
+kind: ACTION
+tool_name: sis_prices_bump
+order: 10
+default_payload:
+  bump_additive: "0"
+  rounding_mode: CEIL_INT
+inputs:
+  - key: bump_percent
+    prompt: "Поднять цены на %: выбери кнопку или введи число."
+    parser: int
+    presets:
+      - text: "+5"
+        value: "5"
+      - text: "+10"
+        value: "10"
+      - text: "+15"
+        value: "15"
+      - text: "+20"
+        value: "20"

@@ -1,0 +1,11 @@
+template_id: LOOK_ARCHIVE_ALL
+category: looks
+title: Снять ВСЕ луки
+button_text: Снять ВСЕ луки
+kind: ACTION
+tool_name: sis_looks_publish
+order: 40
+default_payload:
+  is_active_from: true
+  target_active: false
+inputs: []
