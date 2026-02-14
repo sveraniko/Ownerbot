@@ -14,7 +14,8 @@ from app.asr.cache import get_or_transcribe
 from app.asr.errors import ASRError
 from app.asr.factory import get_asr_provider
 from app.asr.telegram_voice import download_voice_bytes
-from app.bot.keyboards.confirm import confirm_keyboard
+from app.bot.keyboards.confirm import confirm_keyboard, confirm_keyboard_with_force
+from app.bot.services.action_force import requires_force_confirm
 from app.bot.services.intent_router import route_intent
 from app.bot.services.retrospective import write_retrospective_event
 from app.bot.services.tool_runner import run_tool
@@ -429,9 +430,27 @@ async def handle_tool_call(message: Message, text: str, *, input_kind: str = "te
             "idempotency_key": idempotency_key,
         }
         token = await create_confirm_token(confirm_payload)
+        if requires_force_confirm(response):
+            force_payload = dict(payload_commit)
+            force_payload["force"] = True
+            force_token = await create_confirm_token(
+                {
+                    "tool_name": tool.name,
+                    "payload_commit": force_payload,
+                    "owner_user_id": message.from_user.id,
+                    "idempotency_key": str(uuid.uuid4()),
+                }
+            )
+            markup = confirm_keyboard_with_force(
+                f"{CONFIRM_CB_PREFIX}{token}",
+                f"{CONFIRM_CB_PREFIX}{force_token}",
+                f"{CANCEL_CB_PREFIX}{token}",
+            )
+        else:
+            markup = confirm_keyboard(f"{CONFIRM_CB_PREFIX}{token}", f"{CANCEL_CB_PREFIX}{token}")
         await message.answer(
             format_tool_response(response, source_tag=source_tag if "source_tag" in locals() else None),
-            reply_markup=confirm_keyboard(f"{CONFIRM_CB_PREFIX}{token}", f"{CANCEL_CB_PREFIX}{token}"),
+            reply_markup=markup,
         )
         await write_retrospective_event(
             correlation_id=correlation_id,
