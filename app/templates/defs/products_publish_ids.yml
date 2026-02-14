@@ -1,0 +1,13 @@
+template_id: PRD_PUBLISH_IDS
+category: products
+title: Опубликовать товары (по ID)
+button_text: Опубликовать товары (по ID)
+kind: ACTION
+tool_name: sis_products_publish
+order: 10
+default_payload:
+  target_status: ACTIVE
+inputs:
+  - key: product_ids
+    prompt: Введи ID товаров через запятую/пробел/перенос.
+    parser: ids

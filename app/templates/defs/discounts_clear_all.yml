@@ -1,0 +1,9 @@
+template_id: DSC_CLEAR_ALL
+category: discounts
+title: Удалить ВСЕ скидки
+button_text: Удалить ВСЕ скидки
+kind: ACTION
+tool_name: sis_discounts_clear
+order: 20
+default_payload: {}
+inputs: []

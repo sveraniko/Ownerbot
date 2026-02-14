@@ -360,6 +360,26 @@ TemplateSpec поля:
 * сначала добавляешь tool (в `app/tools/impl/...`)
 * затем шаблон YAML, который его вызывает
 
+
+## Template engine
+
+### Где лежат defs
+- `app/templates/defs/*.yml` — source-of-truth шаблонов для `/templates`.
+- `app/templates/catalog/models.py` — `TemplateSpec`/`InputStep` модель и валидация.
+- `app/templates/catalog/loader.py` — загрузка defs и проверка duplicate `template_id`.
+
+### Как добавить новый шаблон
+1. Создай `*.yml` в `app/templates/defs/` с уникальным `template_id`.
+2. Укажи `category`, `button_text`, `kind`, `tool_name`, `default_payload`, `inputs`.
+3. Если нужны шаги ввода — добавь `inputs[]` с `parser` и (опционально) `presets`.
+4. Ничего не регистрируй вручную в keyboard/router: меню и запуск строятся автоматически из каталога.
+
+### Правила
+- `template_id` должен быть стабильным и уникальным; дубликаты = ошибка загрузки на старте.
+- `category` определяет группировку в меню `/templates`.
+- `inputs` задают универсальный flow: шаги, парсеры, кнопочные presets.
+- Для `kind=ACTION` всегда выполняется preview (`dry_run`) перед confirm/commit через существующий ACTION pipeline.
+
 ---
 
 # Замена/обновление документации

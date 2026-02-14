@@ -1,0 +1,11 @@
+template_id: PRC_FX_AUTO
+category: prices
+title: FX обновить (по настройкам)
+button_text: FX обновить (по настройкам)
+kind: ACTION
+tool_name: sis_fx_reprice_auto
+order: 40
+default_payload:
+  force: false
+  refresh_snapshot: true
+inputs: []

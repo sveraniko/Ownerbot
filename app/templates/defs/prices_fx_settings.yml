@@ -1,0 +1,12 @@
+template_id: PRC_FX_SETTINGS
+category: prices
+title: FX расписание/пороги
+button_text: FX расписание/пороги
+kind: ACTION
+tool_name: sis_fx_settings_update
+order: 50
+default_payload: {}
+inputs:
+  - key: updates
+    prompt: "Введи FX настройки JSON (например: {\"reprice_schedule_mode\":\"interval\",\"reprice_schedule_interval_hours\":6}) или key=value через запятую."
+    parser: json_or_kv

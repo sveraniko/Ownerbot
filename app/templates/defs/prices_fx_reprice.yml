@@ -1,0 +1,40 @@
+template_id: PRC_FX_REPRICE
+category: prices
+title: FX пересчёт цен
+button_text: FX пересчёт цен
+kind: ACTION
+tool_name: sis_fx_reprice
+order: 20
+default_payload:
+  markup_percent: "0"
+  markup_additive: "0"
+  rounding_mode: CEIL_INT
+  anomaly_threshold_pct: "25"
+inputs:
+  - key: input_currency
+    prompt: FX пересчёт — выбери input_currency
+    parser: str
+    presets:
+      - text: USD
+        value: USD
+      - text: EUR
+        value: EUR
+      - text: UAH
+        value: UAH
+      - text: PLN
+        value: PLN
+  - key: shop_currency
+    prompt: Выбери shop_currency
+    parser: str
+    presets:
+      - text: EUR
+        value: EUR
+      - text: UAH
+        value: UAH
+      - text: USD
+        value: USD
+      - text: PLN
+        value: PLN
+  - key: rate_set_id
+    prompt: Введи rate_set_id
+    parser: str

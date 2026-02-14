@@ -1,0 +1,9 @@
+template_id: PRC_FX_STATUS
+category: prices
+title: FX статус
+button_text: FX статус
+kind: REPORT
+tool_name: sis_fx_status
+order: 30
+default_payload: {}
+inputs: []

@@ -1,0 +1,11 @@
+template_id: LOOK_PUBLISH_ALL
+category: looks
+title: Опубликовать ВСЕ луки
+button_text: Опубликовать ВСЕ луки
+kind: ACTION
+tool_name: sis_looks_publish
+order: 30
+default_payload:
+  is_active_from: false
+  target_active: true
+inputs: []

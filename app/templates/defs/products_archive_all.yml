@@ -1,0 +1,11 @@
+template_id: PRD_ARCHIVE_ALL
+category: products
+title: Снять с публикации ВСЕ товары
+button_text: Снять с публикации ВСЕ товары
+kind: ACTION
+tool_name: sis_products_publish
+order: 40
+default_payload:
+  status_from: ACTIVE
+  target_status: ARCHIVED
+inputs: []
