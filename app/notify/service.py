@@ -42,6 +42,31 @@ class NotificationSettingsService:
         return settings
 
     @staticmethod
+    async def set_fx_apply_events(
+        session: AsyncSession,
+        owner_id: int,
+        *,
+        enabled: bool,
+        notify_applied: bool | None = None,
+        notify_noop: bool | None = None,
+        notify_failed: bool | None = None,
+        cooldown_hours: int | None = None,
+    ) -> OwnerNotifySettings:
+        settings = await NotificationSettingsService.get_or_create(session, owner_id)
+        settings.fx_apply_events_enabled = enabled
+        if notify_applied is not None:
+            settings.fx_apply_notify_applied = notify_applied
+        if notify_noop is not None:
+            settings.fx_apply_notify_noop = notify_noop
+        if notify_failed is not None:
+            settings.fx_apply_notify_failed = notify_failed
+        if cooldown_hours is not None:
+            settings.fx_apply_events_cooldown_hours = max(1, min(int(cooldown_hours), 168))
+        await session.commit()
+        await session.refresh(settings)
+        return settings
+
+    @staticmethod
     async def set_digest(
         session: AsyncSession,
         owner_id: int,

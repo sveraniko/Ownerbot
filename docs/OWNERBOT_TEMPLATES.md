@@ -299,6 +299,8 @@
 * **NTF_STATUS** — Текущий статус подписок/настроек уведомлений
 * **NTF_FX_DELTA_SUBSCRIBE** — Подписаться на изменения курса (порог/кулдаун)
 * **NTF_FX_DELTA_UNSUBSCRIBE** — Отписаться от FX
+* **NTF_FX_APPLY_EVENTS_SUBSCRIBE** — Включить FX apply events (applied/noop/failed + cooldown)
+* **NTF_FX_APPLY_EVENTS_UNSUBSCRIBE** — Выключить FX apply events
 * **NTF_DAILY_DIGEST_SUBSCRIBE** — Ежедневный дайджест (время)
 * **NTF_DAILY_DIGEST_UNSUBSCRIBE** — Отписаться от дайджеста
 * **NTF_DIGEST_FORMAT_SET** — Формат daily digest (`text|png|pdf`)

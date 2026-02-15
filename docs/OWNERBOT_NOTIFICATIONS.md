@@ -29,3 +29,11 @@ OwnerBot notifications — owner-only подсистема уведомлени�
 - Daily digest v2 uses real KPI + ops + FX summaries and supports `digest_format=text|png|pdf`.
 - Weekly digest supports per-owner schedule (`weekly_enabled`, `weekly_day_of_week`, `weekly_time_local`, `weekly_tz`) and sends PDF.
 - Safety: state (`digest_last_sent_at` / `weekly_last_sent_at`) updates only after successful send.
+
+
+## FX apply events
+- Новые event-уведомления о результате последнего `fx/apply`: `applied`, `noop`, `failed`.
+- По умолчанию выключены (`fx_apply_events_enabled=false`), а из типов по умолчанию включён только `failed`.
+- Дедупликация по ключу события + кулдаун (`fx_apply_events_cooldown_hours`, 1..168).
+- При ошибке парсинга `last_apply` уведомление об ошибке троттлится (не чаще 1 раза в 12ч).
+- При `UPSTREAM_MODE != DEMO` и отсутствии `last_apply` в `/fx/status` воркер тихо пропускает FX apply события (без спама).

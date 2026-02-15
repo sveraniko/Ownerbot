@@ -17,11 +17,14 @@ from app.notify import (
     NotificationSettingsService,
     build_daily_digest,
     build_weekly_digest,
+    extract_fx_last_apply,
     extract_fx_rate_and_schedule,
+    make_fx_apply_event_key,
     normalize_digest_format,
     render_revenue_trend_png,
     render_weekly_pdf,
     should_send_digest,
+    should_send_fx_apply_event,
     should_send_fx_delta,
     should_send_weekly,
 )
@@ -68,9 +71,27 @@ class NotifyWorker:
     async def _process_owner(self, owner_id: int) -> None:
         async with session_scope() as session:
             notify_settings = await NotificationSettingsService.get_or_create(session, owner_id)
+            fx_status_response = None
+
+            needs_fx_status = any(
+                (
+                    notify_settings.fx_delta_enabled,
+                    notify_settings.fx_apply_events_enabled,
+                    notify_settings.digest_enabled and notify_settings.digest_include_fx,
+                )
+            )
+            if needs_fx_status:
+                fx_status_response = await sis_fx_status.handle(
+                    sis_fx_status.Payload(),
+                    correlation_id=f"notify-fx-{owner_id}",
+                    session=session,
+                )
 
             if notify_settings.fx_delta_enabled:
-                await self._maybe_send_fx_delta(owner_id, notify_settings, session)
+                await self._maybe_send_fx_delta(owner_id, notify_settings, session, fx_status_response)
+
+            if notify_settings.fx_apply_events_enabled:
+                await self._maybe_send_fx_apply_event(owner_id, notify_settings, session, fx_status_response)
 
             if notify_settings.digest_enabled:
                 await self._maybe_send_digest(owner_id, notify_settings, session)
@@ -78,11 +99,12 @@ class NotifyWorker:
             if notify_settings.weekly_enabled:
                 await self._maybe_send_weekly(owner_id, notify_settings, session)
 
-    async def _maybe_send_fx_delta(self, owner_id: int, notify_settings, session) -> None:
+    async def _maybe_send_fx_delta(self, owner_id: int, notify_settings, session, fx_status_response) -> None:
         now = datetime.now(timezone.utc)
         try:
-            payload = sis_fx_status.Payload()
-            response = await sis_fx_status.handle(payload, correlation_id=f"notify-fx-{owner_id}", session=session)
+            response = fx_status_response
+            if response is None:
+                response = await sis_fx_status.handle(sis_fx_status.Payload(), correlation_id=f"notify-fx-{owner_id}", session=session)
             if response.status != "ok":
                 await self._notify_error_with_cooldown(notify_settings, session, owner_id, "fx_status_error")
                 return
@@ -116,6 +138,100 @@ class NotifyWorker:
             await write_audit_event("notify_fx_delta_sent", {"owner_id": owner_id, "rate": new_rate, "delta_pct": round(delta_pct, 3)})
         except Exception as exc:
             await self._notify_error_with_cooldown(notify_settings, session, owner_id, f"fx_delta_failed:{str(exc)[:120]}")
+
+    async def _maybe_send_fx_apply_event(self, owner_id: int, notify_settings, session, fx_status_response) -> None:
+        now = datetime.now(timezone.utc)
+        try:
+            response = fx_status_response
+            if response is None:
+                response = await sis_fx_status.handle(sis_fx_status.Payload(), correlation_id=f"notify-fx-{owner_id}", session=session)
+            if response.status != "ok":
+                await self._notify_error_with_cooldown(notify_settings, session, owner_id, "fx_apply_status_error")
+                return
+
+            last_apply, warning = extract_fx_last_apply(response.data)
+            if last_apply is None:
+                mode = str(get_settings().upstream_mode).upper()
+                if mode != "DEMO" and warning in {"missing_last_apply", "last_apply_result_unsupported"}:
+                    return
+                await self._notify_fx_apply_parse_warning(notify_settings, owner_id, session, warning or "last_apply_parse_failed")
+                return
+
+            result = str(last_apply.get("result") or "")
+            result_enabled = {
+                "applied": bool(notify_settings.fx_apply_notify_applied),
+                "noop": bool(notify_settings.fx_apply_notify_noop),
+                "failed": bool(notify_settings.fx_apply_notify_failed),
+            }.get(result, False)
+            if not result_enabled:
+                return
+
+            event_key = make_fx_apply_event_key(last_apply)
+            if not should_send_fx_apply_event(
+                now=now,
+                last_sent_at=notify_settings.fx_apply_last_sent_at,
+                cooldown_hours=int(notify_settings.fx_apply_events_cooldown_hours),
+                last_seen_key=notify_settings.fx_apply_last_seen_key,
+                event_key=event_key,
+            ):
+                return
+
+            message = self._format_fx_apply_message(last_apply, str(notify_settings.digest_tz or "Europe/Berlin"))
+            sent = await self._safe_send_message(owner_id, message)
+            if not sent:
+                return
+
+            notify_settings.fx_apply_last_seen_key = event_key
+            notify_settings.fx_apply_last_sent_at = now
+            await session.commit()
+            await write_audit_event(
+                "notify_fx_apply_event_sent",
+                {
+                    "owner_id": owner_id,
+                    "result": result,
+                    "affected_count": int(last_apply.get("affected_count") or 0),
+                    "correlation_id": f"notify-fx-{owner_id}",
+                },
+            )
+        except Exception as exc:
+            await self._notify_error_with_cooldown(notify_settings, session, owner_id, f"fx_apply_event_failed:{str(exc)[:120]}")
+
+    async def _notify_fx_apply_parse_warning(self, notify_settings, owner_id: int, session, warning: str) -> None:
+        now = datetime.now(timezone.utc)
+        if notify_settings.fx_apply_last_error_notice_at and now - notify_settings.fx_apply_last_error_notice_at < timedelta(hours=12):
+            return
+        notify_settings.fx_apply_last_error_notice_at = now
+        await session.commit()
+        await write_audit_event("notify_error", {"owner_id": owner_id, "message": f"fx_apply_parse:{warning}"[:200]})
+
+    @staticmethod
+    def _format_fx_apply_message(last_apply: dict[str, object], tz_name: str) -> str:
+        result = str(last_apply.get("result") or "").upper()
+        at = last_apply.get("at")
+        at_text = "n/a"
+        if isinstance(at, datetime):
+            try:
+                at_text = at.astimezone(ZoneInfo(tz_name)).strftime("%Y-%m-%d %H:%M:%S %Z")
+            except Exception:
+                at_text = at.isoformat()
+        lines = [f"💱 FX apply: {result}", f"🕒 {at_text}"]
+        if result == "APPLIED":
+            lines.append(f"📦 affected: {int(last_apply.get('affected_count') or 0)}")
+            if last_apply.get("rate"):
+                lines.append(f"💲 rate: {last_apply.get('rate')}")
+            if last_apply.get("delta_percent"):
+                lines.append(f"📈 Δ%: {last_apply.get('delta_percent')}")
+        elif result == "NOOP":
+            reason = str(last_apply.get("reason") or "not_due")
+            lines.append(f"ℹ️ reason: {reason}")
+            if last_apply.get("rate"):
+                lines.append(f"💲 rate: {last_apply.get('rate')}")
+            if last_apply.get("delta_percent"):
+                lines.append(f"📈 Δ%: {last_apply.get('delta_percent')}")
+        else:
+            error_text = str(last_apply.get("error") or "unknown_error")[:200]
+            lines.append(f"❗ {error_text}")
+        return "\n".join(lines)
 
     async def _maybe_send_digest(self, owner_id: int, notify_settings, session) -> None:
         now_utc = datetime.now(timezone.utc)

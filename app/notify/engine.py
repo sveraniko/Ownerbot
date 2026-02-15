@@ -1,11 +1,103 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 
 ALLOWED_DIGEST_FORMATS = {"text", "png", "pdf"}
+FX_APPLY_RESULTS = {"applied", "noop", "failed"}
+
+
+def parse_datetime_safe(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+    if not isinstance(value, str) or not value.strip():
+        return None
+    raw = value.strip()
+    if raw.endswith("Z"):
+        raw = raw[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
+
+
+def extract_fx_last_apply(status_payload: dict[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
+    last_apply = status_payload.get("last_apply")
+    if not isinstance(last_apply, dict):
+        return None, "missing_last_apply"
+
+    at_value = parse_datetime_safe(last_apply.get("at") or last_apply.get("attempted_at") or last_apply.get("created_at"))
+    result = last_apply.get("result")
+    if not isinstance(result, str):
+        return None, "last_apply_result_invalid"
+    result_normalized = result.lower().strip()
+    if result_normalized not in FX_APPLY_RESULTS:
+        return None, "last_apply_result_unsupported"
+    if at_value is None:
+        return None, "last_apply_at_invalid"
+
+    affected_count_raw = last_apply.get("affected_count")
+    affected_count = int(affected_count_raw) if isinstance(affected_count_raw, (int, float, str)) and str(affected_count_raw).isdigit() else 0
+
+    normalized = {
+        "at": at_value,
+        "result": result_normalized,
+        "affected_count": affected_count,
+        "rate": _safe_str(last_apply.get("rate") or last_apply.get("effective_rate")),
+        "delta_percent": _safe_str(last_apply.get("delta_percent") or last_apply.get("delta_pct")),
+        "reason": _safe_str(last_apply.get("reason")),
+        "error": _safe_str(last_apply.get("error") or last_apply.get("message")),
+        "from": _safe_str(last_apply.get("from") or status_payload.get("base_currency")),
+        "to": _safe_str(last_apply.get("to") or status_payload.get("shop_currency")),
+        "provider": _safe_str(last_apply.get("provider") or status_payload.get("provider")),
+    }
+    return normalized, None
+
+
+def make_fx_apply_event_key(last_apply: dict[str, Any]) -> str:
+    at = last_apply.get("at")
+    at_iso = at.isoformat() if isinstance(at, datetime) else "n/a"
+    components = [
+        at_iso,
+        str(last_apply.get("result") or ""),
+        str(last_apply.get("affected_count") or 0),
+        str(last_apply.get("rate") or ""),
+        str(last_apply.get("reason") or ""),
+    ]
+    key = "|".join(components)
+    return key[:240]
+
+
+def should_send_fx_apply_event(
+    now: datetime,
+    last_sent_at: datetime | None,
+    cooldown_hours: int,
+    last_seen_key: str | None,
+    event_key: str,
+) -> bool:
+    if not event_key:
+        return False
+    if last_seen_key and last_seen_key == event_key:
+        return False
+    if cooldown_hours < 1:
+        return False
+    if last_sent_at is not None and (now - last_sent_at) < timedelta(hours=cooldown_hours):
+        return False
+    return True
+
+
+def _safe_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        text = value.strip()
+        return text or None
+    if isinstance(value, (int, float, bool)):
+        return str(value)
+    return None
 
 
 @dataclass
