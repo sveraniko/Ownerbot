@@ -17,7 +17,7 @@ from app.notify.engine import (
 )
 from app.notify.digest_builder import DigestBundle, build_daily_digest, build_weekly_digest
 from app.notify.ops import build_ops_snapshot
-from app.notify.renderers import render_revenue_trend_png, render_weekly_pdf
+from app.notify.renderers import render_ops_pdf, render_revenue_trend_png, render_weekly_pdf
 from app.notify.service import NotificationSettingsService
 
 __all__ = [
@@ -40,6 +40,7 @@ __all__ = [
     "build_daily_digest",
     "build_weekly_digest",
     "build_ops_snapshot",
+    "render_ops_pdf",
     "render_revenue_trend_png",
     "render_weekly_pdf",
     "NotificationSettingsService",

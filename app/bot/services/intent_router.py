@@ -60,6 +60,10 @@ def route_intent(text: str) -> IntentResult:
     if "еженедельный отчет" in normalized or "еженедельный отчёт" in normalized:
         return IntentResult(tool="biz_dashboard_weekly", payload={"format": "pdf"})
 
+    ops_report_phrases = ["операционный отчет", "операционный отчёт", "ops отчет", "ops отчёт", "отчет по проблемам", "отчёт по проблемам", "что горит"]
+    if any(phrase in normalized for phrase in ops_report_phrases):
+        return IntentResult(tool="biz_dashboard_ops", payload={"format": "pdf", "tz": "Europe/Berlin"})
+
     fx_status_phrases = ["fx статус", "что по курсу", "курс валют"]
     if "курс" in normalized or any(phrase in normalized for phrase in fx_status_phrases):
         return IntentResult(tool="sis_fx_status", payload={})

@@ -1,0 +1,11 @@
+template_id: BIZ_OPS_DASHBOARD_PDF
+category: reports
+title: Ops report (PDF)
+button_text: "⚠️ Ops report (PDF)"
+kind: REPORT
+tool_name: biz_dashboard_ops
+order: 143
+default_payload:
+  format: pdf
+  tz: Europe/Berlin
+inputs: []

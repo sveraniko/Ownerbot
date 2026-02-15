@@ -55,6 +55,7 @@ from app.tools.impl import (
     ntf_ops_alerts_unsubscribe,
     biz_dashboard_daily,
     biz_dashboard_weekly,
+    biz_dashboard_ops,
 )
 
 
@@ -113,4 +114,5 @@ def build_registry() -> ToolRegistry:
     registry.register("ntf_ops_alerts_unsubscribe", "1.0", ntf_ops_alerts_unsubscribe.Payload, ntf_ops_alerts_unsubscribe.handle)
     registry.register("biz_dashboard_daily", "1.0", biz_dashboard_daily.Payload, biz_dashboard_daily.handle)
     registry.register("biz_dashboard_weekly", "1.0", biz_dashboard_weekly.Payload, biz_dashboard_weekly.handle)
+    registry.register("biz_dashboard_ops", "1.0", biz_dashboard_ops.Payload, biz_dashboard_ops.handle)
     return registry
