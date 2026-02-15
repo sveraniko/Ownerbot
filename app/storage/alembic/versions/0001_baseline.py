@@ -52,6 +52,28 @@ def upgrade() -> None:
         sa.Column("fx_apply_last_seen_key", sa.String(length=255), nullable=True),
         sa.Column("fx_apply_last_sent_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("fx_apply_last_error_notice_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("ops_alerts_enabled", sa.Boolean(), nullable=False, server_default=sa.false()),
+        sa.Column("ops_alerts_cooldown_hours", sa.Integer(), nullable=False, server_default="6"),
+        sa.Column("ops_alerts_last_seen_key", sa.String(length=255), nullable=True),
+        sa.Column("ops_alerts_last_sent_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("ops_alerts_last_error_notice_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("ops_unanswered_enabled", sa.Boolean(), nullable=False, server_default=sa.true()),
+        sa.Column("ops_unanswered_threshold_hours", sa.Integer(), nullable=False, server_default="2"),
+        sa.Column("ops_unanswered_min_count", sa.Integer(), nullable=False, server_default="1"),
+        sa.Column("ops_stuck_orders_enabled", sa.Boolean(), nullable=False, server_default=sa.true()),
+        sa.Column("ops_stuck_orders_min_count", sa.Integer(), nullable=False, server_default="1"),
+        sa.Column("ops_stuck_orders_preset", sa.String(length=32), nullable=False, server_default="stuck"),
+        sa.Column("ops_payment_issues_enabled", sa.Boolean(), nullable=False, server_default=sa.true()),
+        sa.Column("ops_payment_issues_min_count", sa.Integer(), nullable=False, server_default="1"),
+        sa.Column("ops_payment_issues_preset", sa.String(length=32), nullable=False, server_default="payment_issues"),
+        sa.Column("ops_errors_enabled", sa.Boolean(), nullable=False, server_default=sa.true()),
+        sa.Column("ops_errors_window_hours", sa.Integer(), nullable=False, server_default="24"),
+        sa.Column("ops_errors_min_count", sa.Integer(), nullable=False, server_default="1"),
+        sa.Column("ops_out_of_stock_enabled", sa.Boolean(), nullable=False, server_default=sa.true()),
+        sa.Column("ops_out_of_stock_min_count", sa.Integer(), nullable=False, server_default="1"),
+        sa.Column("ops_low_stock_enabled", sa.Boolean(), nullable=False, server_default=sa.true()),
+        sa.Column("ops_low_stock_lte", sa.Integer(), nullable=False, server_default="5"),
+        sa.Column("ops_low_stock_min_count", sa.Integer(), nullable=False, server_default="3"),
         sa.Column("digest_enabled", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("digest_time_local", sa.String(length=5), nullable=False, server_default="09:00"),
         sa.Column("digest_tz", sa.String(length=64), nullable=False, server_default="Europe/Berlin"),
@@ -160,6 +182,11 @@ def upgrade() -> None:
         ["fx_apply_events_enabled"],
     )
     op.create_index(
+        "idx_owner_notify_settings_ops_alerts_enabled",
+        "owner_notify_settings",
+        ["ops_alerts_enabled"],
+    )
+    op.create_index(
         "idx_owner_notify_settings_digest_enabled",
         "owner_notify_settings",
         ["digest_enabled"],
@@ -257,6 +284,7 @@ def downgrade() -> None:
     op.drop_index("idx_ownerbot_audit_events_occurred_at", table_name="ownerbot_audit_events")
     op.drop_index("idx_owner_notify_settings_weekly_enabled", table_name="owner_notify_settings")
     op.drop_index("idx_owner_notify_settings_fx_apply_events_enabled", table_name="owner_notify_settings")
+    op.drop_index("idx_owner_notify_settings_ops_alerts_enabled", table_name="owner_notify_settings")
     op.drop_index("idx_owner_notify_settings_digest_enabled", table_name="owner_notify_settings")
     op.drop_index("idx_owner_notify_settings_fx_delta_enabled", table_name="owner_notify_settings")
     op.drop_table("ownerbot_demo_chat_threads")

@@ -1,0 +1,9 @@
+template_id: NTF_OPS_ALERTS_UNSUBSCRIBE
+category: notifications
+title: Выключить Ops alerts
+button_text: Ops alerts OFF
+kind: ACTION
+tool_name: ntf_ops_alerts_unsubscribe
+order: 33
+default_payload: {}
+inputs: []

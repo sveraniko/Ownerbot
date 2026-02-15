@@ -120,3 +120,27 @@ class NotificationSettingsService:
         await session.commit()
         await session.refresh(settings)
         return settings
+
+
+    @staticmethod
+    async def set_ops_alerts(
+        session: AsyncSession,
+        owner_id: int,
+        *,
+        enabled: bool,
+        cooldown_hours: int | None = None,
+        rules: dict[str, object] | None = None,
+    ) -> OwnerNotifySettings:
+        settings = await NotificationSettingsService.get_or_create(session, owner_id)
+        settings.ops_alerts_enabled = enabled
+        if cooldown_hours is not None:
+            settings.ops_alerts_cooldown_hours = max(1, min(int(cooldown_hours), 168))
+
+        rules = rules or {}
+        for attr, value in rules.items():
+            if hasattr(settings, attr) and value is not None:
+                setattr(settings, attr, value)
+
+        await session.commit()
+        await session.refresh(settings)
+        return settings

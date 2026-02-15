@@ -96,11 +96,14 @@ async def test_digest_png_uses_photo_and_updates_state(monkeypatch):
         fx_apply_events_enabled = False
         digest_enabled = True
         digest_include_fx = True
+        digest_include_ops = False
         digest_tz = "UTC"
         digest_time_local = "00:00"
         digest_last_sent_at = None
         digest_format = "png"
         weekly_enabled = False
+        ops_alerts_enabled = False
+        ops_alerts_last_error_notice_at = None
         weekly_tz = "UTC"
         weekly_time_local = "09:30"
         weekly_day_of_week = 0
@@ -144,11 +147,14 @@ async def test_digest_pdf_uses_document(monkeypatch):
         fx_apply_events_enabled = False
         digest_enabled = True
         digest_include_fx = True
+        digest_include_ops = False
         digest_tz = "UTC"
         digest_time_local = "00:00"
         digest_last_sent_at = None
         digest_format = "pdf"
         weekly_enabled = False
+        ops_alerts_enabled = False
+        ops_alerts_last_error_notice_at = None
         weekly_tz = "UTC"
         weekly_time_local = "09:30"
         weekly_day_of_week = 0
@@ -277,7 +283,10 @@ async def test_fx_apply_event_result_defaults(monkeypatch):
         digest_enabled = False
         digest_tz = "UTC"
         digest_include_fx = True
+        digest_include_ops = False
         weekly_enabled = False
+        ops_alerts_enabled = False
+        ops_alerts_last_error_notice_at = None
         last_error_notice_at = None
 
     class FakeSession:
@@ -310,3 +319,130 @@ async def test_fx_apply_event_result_defaults(monkeypatch):
     monkeypatch.setattr("app.core.tasks.notify_worker.sis_fx_status.handle", AsyncMock(return_value=failed_response))
     await worker.tick()
     assert bot.send_message.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_ops_alert_sent_once_and_state_updated(monkeypatch):
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with async_session() as session:
+        session.add(OwnerNotifySettings(owner_id=11, ops_alerts_enabled=True, ops_alerts_cooldown_hours=6, digest_enabled=False))
+        await session.commit()
+
+    @asynccontextmanager
+    async def fake_scope():
+        async with async_session() as s:
+            yield s
+
+    bot = SimpleNamespace(send_message=AsyncMock(), send_photo=AsyncMock(), send_document=AsyncMock())
+    worker = NotifyWorker(bot)
+
+    snapshot = {
+        "unanswered_chats": {"count": 2, "top": [{"thread_id": "t1"}], "threshold_hours": 2},
+        "stuck_orders": {"count": 1, "top": [{"order_id": "o1"}]},
+        "payment_issues": {"count": 1, "top": [{"order_id": "o2"}]},
+        "errors": {"count": 1, "top": [{"id": 1}], "window_hours": 24},
+        "inventory": {"out_of_stock": 1, "low_stock": 3, "top_out": [{"product_id": "p1"}], "top_low": [{"product_id": "p2"}]},
+        "warnings": [],
+    }
+
+    monkeypatch.setattr("app.core.tasks.notify_worker.session_scope", fake_scope)
+    monkeypatch.setattr("app.core.tasks.notify_worker.get_redis", AsyncMock(side_effect=lambda: FakeRedis(lock=True)))
+    monkeypatch.setattr("app.core.tasks.notify_worker.get_settings", lambda: SimpleNamespace(owner_ids=[11]))
+    monkeypatch.setattr("app.core.tasks.notify_worker.build_ops_snapshot", AsyncMock(return_value=snapshot))
+
+    await worker.tick()
+    await worker.tick()
+
+    assert bot.send_message.await_count == 1
+    async with async_session() as session:
+        row = await session.get(OwnerNotifySettings, 11)
+        assert row.ops_alerts_last_seen_key is not None
+        assert row.ops_alerts_last_sent_at is not None
+
+
+@pytest.mark.asyncio
+async def test_ops_alert_send_failure_does_not_update_state(monkeypatch):
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with async_session() as session:
+        session.add(OwnerNotifySettings(owner_id=12, ops_alerts_enabled=True, digest_enabled=False))
+        await session.commit()
+
+    @asynccontextmanager
+    async def fake_scope():
+        async with async_session() as s:
+            yield s
+
+    bot = SimpleNamespace(send_message=AsyncMock(side_effect=RuntimeError("boom")), send_photo=AsyncMock(), send_document=AsyncMock())
+    worker = NotifyWorker(bot)
+
+    snapshot = {
+        "unanswered_chats": {"count": 2, "top": [], "threshold_hours": 2},
+        "stuck_orders": {"count": 0, "top": []},
+        "payment_issues": {"count": 0, "top": []},
+        "errors": {"count": 0, "top": [], "window_hours": 24},
+        "inventory": {"out_of_stock": 0, "low_stock": 0, "top_out": [], "top_low": []},
+        "warnings": [],
+    }
+
+    monkeypatch.setattr("app.core.tasks.notify_worker.session_scope", fake_scope)
+    monkeypatch.setattr("app.core.tasks.notify_worker.get_redis", AsyncMock(side_effect=lambda: FakeRedis(lock=True)))
+    monkeypatch.setattr("app.core.tasks.notify_worker.get_settings", lambda: SimpleNamespace(owner_ids=[12]))
+    monkeypatch.setattr("app.core.tasks.notify_worker.build_ops_snapshot", AsyncMock(return_value=snapshot))
+
+    await worker.tick()
+
+    async with async_session() as session:
+        row = await session.get(OwnerNotifySettings, 12)
+        assert row.ops_alerts_last_seen_key is None
+        assert row.ops_alerts_last_sent_at is None
+
+
+@pytest.mark.asyncio
+async def test_ops_tool_warning_throttled(monkeypatch):
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with async_session() as session:
+        session.add(OwnerNotifySettings(owner_id=13, ops_alerts_enabled=True, digest_enabled=False))
+        await session.commit()
+
+    @asynccontextmanager
+    async def fake_scope():
+        async with async_session() as s:
+            yield s
+
+    bot = SimpleNamespace(send_message=AsyncMock(), send_photo=AsyncMock(), send_document=AsyncMock())
+    worker = NotifyWorker(bot)
+
+    snapshot = {
+        "unanswered_chats": {"count": 0, "top": [], "threshold_hours": 2},
+        "stuck_orders": {"count": 0, "top": []},
+        "payment_issues": {"count": 0, "top": []},
+        "errors": {"count": 0, "top": [], "window_hours": 24},
+        "inventory": {"out_of_stock": 0, "low_stock": 0, "top_out": [], "top_low": []},
+        "warnings": ["orders_search(stuck):UPSTREAM_NOT_IMPLEMENTED"],
+    }
+
+    audit_mock = AsyncMock()
+    monkeypatch.setattr("app.core.tasks.notify_worker.write_audit_event", audit_mock)
+    monkeypatch.setattr("app.core.tasks.notify_worker.session_scope", fake_scope)
+    monkeypatch.setattr("app.core.tasks.notify_worker.get_redis", AsyncMock(side_effect=lambda: FakeRedis(lock=True)))
+    monkeypatch.setattr("app.core.tasks.notify_worker.get_settings", lambda: SimpleNamespace(owner_ids=[13]))
+    monkeypatch.setattr("app.core.tasks.notify_worker.build_ops_snapshot", AsyncMock(return_value=snapshot))
+
+    await worker.tick()
+    await worker.tick()
+
+    calls = [c.args[0] for c in audit_mock.await_args_list if c.args]
+    assert calls.count("notify_ops_alert_tool_failed") == 1
+    assert bot.send_message.await_count == 0
