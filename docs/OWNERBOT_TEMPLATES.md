@@ -118,8 +118,9 @@
 * **BIZ_DASHBOARD_DAILY_PNG** — Daily dashboard (PNG)
 * **BIZ_DASHBOARD_DAILY_TEXT** — Daily dashboard (Text)
 * **BIZ_DASHBOARD_WEEKLY_PDF** — Weekly dashboard (PDF)
+* **BIZ_OPS_DASHBOARD_PDF** — Ops report (PDF)
 
-  * Tools: `biz_dashboard_daily`, `biz_dashboard_weekly` (reuse DigestBuilder + renderers)
+  * Tools: `biz_dashboard_daily`, `biz_dashboard_weekly`, `biz_dashboard_ops` (reuse DigestBuilder/ops snapshot + renderers)
   * Safety: Redis lock + cooldown anti-spam
   * Confirm: нет
 

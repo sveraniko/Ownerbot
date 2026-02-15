@@ -95,3 +95,10 @@ def test_business_dashboard_weekly_intent() -> None:
 
     assert result.tool == "biz_dashboard_weekly"
     assert result.payload == {"format": "pdf"}
+
+
+def test_business_dashboard_ops_intent() -> None:
+    result = route_intent("операционный отчет")
+
+    assert result.tool == "biz_dashboard_ops"
+    assert result.payload == {"format": "pdf", "tz": "Europe/Berlin"}
