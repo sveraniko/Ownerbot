@@ -81,9 +81,11 @@
 - Artifact generation writes audit event `artifact_generated` with `correlation_id`.
 
 ### Notifications tools (Owner-only)
-- `ntf_status` — текущий статус подписок и параметров (FX threshold/cooldown, digest time/tz).
+- `ntf_status` — текущий статус подписок и параметров (FX delta + FX apply events + digest/weekly).
 - `ntf_fx_delta_subscribe` — включить FX delta уведомления (`min_percent>=0.01`, `cooldown_hours=1..168`).
 - `ntf_fx_delta_unsubscribe` — выключить FX delta уведомления.
+- `ntf_fx_apply_events_subscribe` — включить FX apply event-уведомления (`notify_applied`, `notify_noop`, `notify_failed`, `cooldown_hours=1..168`).
+- `ntf_fx_apply_events_unsubscribe` — выключить FX apply event-уведомления.
 - `ntf_daily_digest_subscribe` — включить daily digest (опционально `time_local`, `tz`).
 - `ntf_daily_digest_unsubscribe` — выключить daily digest.
 - `ntf_digest_format_set` — формат daily digest: `text|png|pdf`.

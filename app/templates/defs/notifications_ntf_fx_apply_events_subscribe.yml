@@ -1,0 +1,13 @@
+template_id: NTF_FX_APPLY_EVENTS_SUBSCRIBE
+category: notifications
+title: Включить FX apply events
+button_text: FX apply ON
+kind: ACTION
+tool_name: ntf_fx_apply_events_subscribe
+order: 25
+default_payload:
+  notify_applied: false
+  notify_noop: false
+  notify_failed: true
+  cooldown_hours: 6
+inputs: []

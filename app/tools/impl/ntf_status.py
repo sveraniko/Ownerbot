@@ -48,6 +48,13 @@ async def handle(payload: Payload, correlation_id: str, session, actor: ToolActo
         "fx_delta_min_percent": float(settings.fx_delta_min_percent),
         "fx_delta_cooldown_hours": settings.fx_delta_cooldown_hours,
         "fx_delta_last_notified_rate": float(settings.fx_delta_last_notified_rate) if settings.fx_delta_last_notified_rate else None,
+        "fx_apply_events_enabled": settings.fx_apply_events_enabled,
+        "fx_apply_notify_applied": settings.fx_apply_notify_applied,
+        "fx_apply_notify_noop": settings.fx_apply_notify_noop,
+        "fx_apply_notify_failed": settings.fx_apply_notify_failed,
+        "fx_apply_events_cooldown_hours": settings.fx_apply_events_cooldown_hours,
+        "fx_apply_last_seen_key": settings.fx_apply_last_seen_key,
+        "fx_apply_last_sent_at": settings.fx_apply_last_sent_at.isoformat() if settings.fx_apply_last_sent_at else None,
         "digest_enabled": settings.digest_enabled,
         "digest_time_local": settings.digest_time_local,
         "digest_tz": settings.digest_tz,
@@ -63,6 +70,7 @@ async def handle(payload: Payload, correlation_id: str, session, actor: ToolActo
         "next_weekly_at_local": next_weekly.isoformat(),
         "message": (
             f"FX Δ: {'on' if settings.fx_delta_enabled else 'off'} ({float(settings.fx_delta_min_percent):.2f}%/{settings.fx_delta_cooldown_hours}ч)\n"
+            f"FX apply: {'on' if settings.fx_apply_events_enabled else 'off'} (applied={settings.fx_apply_notify_applied}, noop={settings.fx_apply_notify_noop}, failed={settings.fx_apply_notify_failed}, cd={settings.fx_apply_events_cooldown_hours}ч)\n"
             f"Digest: {'on' if settings.digest_enabled else 'off'} ({settings.digest_time_local} {settings.digest_tz}, format={normalize_digest_format(settings.digest_format)})\n"
             f"Weekly: {'on' if settings.weekly_enabled else 'off'} (dow={weekly_dow}, {settings.weekly_time_local} {settings.weekly_tz})"
         ),

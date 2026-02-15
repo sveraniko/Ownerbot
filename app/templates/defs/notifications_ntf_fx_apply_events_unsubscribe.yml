@@ -1,0 +1,9 @@
+template_id: NTF_FX_APPLY_EVENTS_UNSUBSCRIBE
+category: notifications
+title: Выключить FX apply events
+button_text: FX apply OFF
+kind: ACTION
+tool_name: ntf_fx_apply_events_unsubscribe
+order: 35
+default_payload: {}
+inputs: []
