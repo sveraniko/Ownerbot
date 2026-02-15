@@ -1,0 +1,9 @@
+template_id: NTF_DAILY_DIGEST_UNSUBSCRIBE
+category: notifications
+title: Выключить daily digest
+button_text: Digest OFF
+kind: ACTION
+tool_name: ntf_daily_digest_unsubscribe
+order: 50
+default_payload: {}
+inputs: []

@@ -296,6 +296,7 @@
 
 ### Подписки владельца
 
+* **NTF_STATUS** — Текущий статус подписок/настроек уведомлений
 * **NTF_FX_DELTA_SUBSCRIBE** — Подписаться на изменения курса (порог/кулдаун)
 * **NTF_FX_DELTA_UNSUBSCRIBE** — Отписаться от FX
 * **NTF_DAILY_DIGEST_SUBSCRIBE** — Ежедневный дайджест (время)
@@ -303,6 +304,7 @@
 
 ### Разовые уведомления
 
+* **NTF_SEND_DIGEST_NOW** — Прислать digest сейчас (debug/проверка)
 * **NTF_SEND_WEEKLY_PDF_NOW** — Прислать weekly PDF сейчас
 
 ---

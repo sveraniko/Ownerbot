@@ -55,6 +55,12 @@ EXPECTED_TEMPLATE_IDS = {
     "DSC_CREATE_COUPON",
     "FRC_7D_DEMAND",
     "FRC_REORDER_PLAN",
+    "NTF_STATUS",
+    "NTF_FX_DELTA_SUBSCRIBE",
+    "NTF_FX_DELTA_UNSUBSCRIBE",
+    "NTF_DAILY_DIGEST_SUBSCRIBE",
+    "NTF_DAILY_DIGEST_UNSUBSCRIBE",
+    "NTF_SEND_DIGEST_NOW",
 }
 
 
@@ -67,4 +73,4 @@ def test_templates_v2_coverage_ids_present() -> None:
 def test_templates_v2_categories_present() -> None:
     catalog = load_template_catalog()
     categories = set(catalog.list_categories())
-    assert {"reports", "orders", "team", "systems", "advanced", "products", "forecast"}.issubset(categories)
+    assert {"reports", "orders", "team", "systems", "advanced", "products", "forecast", "notifications"}.issubset(categories)

@@ -1,0 +1,9 @@
+template_id: NTF_FX_DELTA_UNSUBSCRIBE
+category: notifications
+title: Выключить FX delta
+button_text: FX delta OFF
+kind: ACTION
+tool_name: ntf_fx_delta_unsubscribe
+order: 30
+default_payload: {}
+inputs: []

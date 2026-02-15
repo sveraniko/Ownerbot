@@ -36,6 +36,22 @@ def upgrade() -> None:
         sa.Column("payload_json", sa.Text(), nullable=False),
     )
     op.create_table(
+        "owner_notify_settings",
+        sa.Column("owner_id", sa.BigInteger(), primary_key=True),
+        sa.Column("fx_delta_enabled", sa.Boolean(), nullable=False, server_default=sa.false()),
+        sa.Column("fx_delta_min_percent", sa.Numeric(6, 3), nullable=False, server_default="0.25"),
+        sa.Column("fx_delta_cooldown_hours", sa.Integer(), nullable=False, server_default="6"),
+        sa.Column("fx_delta_last_notified_rate", sa.Numeric(12, 6), nullable=True),
+        sa.Column("fx_delta_last_notified_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("fx_delta_last_seen_sis_event_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("digest_enabled", sa.Boolean(), nullable=False, server_default=sa.false()),
+        sa.Column("digest_time_local", sa.String(length=5), nullable=False, server_default="09:00"),
+        sa.Column("digest_tz", sa.String(length=64), nullable=False, server_default="Europe/Berlin"),
+        sa.Column("digest_last_sent_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("last_error_notice_at", sa.DateTime(timezone=True), nullable=True),
+    )
+
+    op.create_table(
         "ownerbot_demo_orders",
         sa.Column("order_id", sa.String(length=64), primary_key=True),
         sa.Column("status", sa.String(length=32), nullable=False),
@@ -114,6 +130,17 @@ def upgrade() -> None:
         sa.Column("last_customer_message_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("last_manager_reply_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+    )
+
+    op.create_index(
+        "idx_owner_notify_settings_fx_delta_enabled",
+        "owner_notify_settings",
+        ["fx_delta_enabled"],
+    )
+    op.create_index(
+        "idx_owner_notify_settings_digest_enabled",
+        "owner_notify_settings",
+        ["digest_enabled"],
     )
 
     op.create_index(
@@ -201,7 +228,10 @@ def downgrade() -> None:
     op.drop_index("idx_ownerbot_audit_events_correlation_id", table_name="ownerbot_audit_events")
     op.drop_index("idx_ownerbot_audit_events_event_type_occurred_at", table_name="ownerbot_audit_events")
     op.drop_index("idx_ownerbot_audit_events_occurred_at", table_name="ownerbot_audit_events")
+    op.drop_index("idx_owner_notify_settings_digest_enabled", table_name="owner_notify_settings")
+    op.drop_index("idx_owner_notify_settings_fx_delta_enabled", table_name="owner_notify_settings")
     op.drop_table("ownerbot_demo_chat_threads")
+    op.drop_table("owner_notify_settings")
     op.drop_table("ownerbot_demo_coupons")
     op.drop_table("ownerbot_demo_order_items")
     op.drop_table("ownerbot_demo_products")

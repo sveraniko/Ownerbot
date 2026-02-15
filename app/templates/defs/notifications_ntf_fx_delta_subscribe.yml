@@ -1,0 +1,9 @@
+template_id: NTF_FX_DELTA_SUBSCRIBE
+category: notifications
+title: Включить FX delta
+button_text: FX delta ON
+kind: ACTION
+tool_name: ntf_fx_delta_subscribe
+order: 20
+default_payload: {}
+inputs: []

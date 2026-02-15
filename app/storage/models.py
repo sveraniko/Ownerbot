@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, date
 
-from sqlalchemy import Date, DateTime, Integer, String, Numeric, Text, func, Boolean, Index
+from sqlalchemy import BigInteger, Date, DateTime, Integer, String, Numeric, Text, func, Boolean, Index
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -31,6 +31,23 @@ class OwnerbotAuditEvent(Base):
     correlation_id: Mapped[str] = mapped_column(String(64), nullable=False)
     event_type: Mapped[str] = mapped_column(String(128), nullable=False)
     payload_json: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class OwnerNotifySettings(Base):
+    __tablename__ = "owner_notify_settings"
+
+    owner_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    fx_delta_enabled: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=False)
+    fx_delta_min_percent: Mapped[float] = mapped_column(Numeric(6, 3), nullable=False, default=0.25)
+    fx_delta_cooldown_hours: Mapped[int] = mapped_column(Integer, nullable=False, default=6)
+    fx_delta_last_notified_rate: Mapped[float | None] = mapped_column(Numeric(12, 6), nullable=True)
+    fx_delta_last_notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    fx_delta_last_seen_sis_event_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    digest_enabled: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=False)
+    digest_time_local: Mapped[str] = mapped_column(String(5), nullable=False, default="09:00")
+    digest_tz: Mapped[str] = mapped_column(String(64), nullable=False, default="Europe/Berlin")
+    digest_last_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error_notice_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class OwnerbotDemoOrder(Base):

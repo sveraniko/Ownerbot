@@ -45,6 +45,7 @@ class TemplateCatalog(BaseModel):
         "products",
         "looks",
         "discounts",
+        "notifications",
     ]
 
     def list_categories(self) -> list[str]:

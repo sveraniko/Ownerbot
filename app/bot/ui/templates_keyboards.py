@@ -16,6 +16,7 @@ _CATEGORY_META = {
     "products": ("📦", "Товары"),
     "looks": ("👗", "Луки"),
     "discounts": ("🏷️", "Скидки"),
+    "notifications": ("🔔", "Уведомления"),
 }
 
 
