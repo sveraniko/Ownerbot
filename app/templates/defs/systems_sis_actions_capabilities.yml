@@ -1,0 +1,9 @@
+template_id: SYS_SIS_ACTIONS_CAPABILITIES
+category: systems
+title: SIS actions capabilities
+button_text: "🧩 SIS actions capabilities"
+kind: REPORT
+tool_name: sis_actions_capabilities
+order: 35
+default_payload: {}
+inputs: []

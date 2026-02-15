@@ -337,7 +337,24 @@ A change is “done” only when:
 
 ---
 
-## 16) References (project docs)
+## 16) SIS actions capabilities probe/cache
+
+OwnerBot maintains an explicit SIS capabilities layer for action endpoints (FX, bump, rollback, discounts, products publish, looks publish):
+
+- Probe is performed via safe endpoints (GET status or preview endpoints) using SIS actions client semantics.
+- Probe results are cached in Redis key `ownerbot:sis:capabilities:{shop_scope}`.
+- Cache TTL: **6 hours**.
+- HTTP interpretation:
+  - `200` / `422` → capability supported
+  - `404` → endpoint absent (unsupported)
+  - `401` / `403` → misconfigured auth/allowlist
+  - `0` (network error) → upstream offline/unknown
+
+Diagnostics:
+- Use template **🧩 SIS actions capabilities** (`sis_actions_capabilities`) to inspect current status and `checked_at`.
+- Use payload `force_refresh=true` for explicit reprobe.
+
+## 17) References (project docs)
 
 - `README.md` (OwnerBot Quick Start)
 - `docs/OWNERBOT_TECH_BASE.md`
