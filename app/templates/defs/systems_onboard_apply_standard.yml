@@ -1,0 +1,10 @@
+template_id: SYS_ONBOARD_APPLY_STANDARD
+category: systems
+title: Setup apply standard
+button_text: "✅ Setup: Standard"
+kind: ACTION
+tool_name: onboard_apply_preset
+order: 36
+default_payload:
+  preset: standard
+inputs: []

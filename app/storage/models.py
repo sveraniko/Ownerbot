@@ -116,6 +116,10 @@ class OwnerNotifySettings(Base):
     weekly_time_local: Mapped[str] = mapped_column(String(5), nullable=False, default="09:30")
     weekly_tz: Mapped[str] = mapped_column(String(64), nullable=False, default="Europe/Berlin")
     weekly_last_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    onboard_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    onboard_last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    onboard_last_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    onboard_last_summary: Mapped[str | None] = mapped_column(String(200), nullable=True)
     last_error_notice_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 

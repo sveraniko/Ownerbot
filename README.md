@@ -21,6 +21,7 @@ OwnerBot — отдельный бот/сервис поверх SIS, котор
 - `docs/OWNERBOT_TOOLS.md` — контракт ToolRequest/ToolResponse + реестр tools.
 - `docs/OWNERBOT_ACTIONS_MASTER.md` — **единая модель действий** (ACTION pipeline, idempotency, audit).
 - `docs/OWNERBOT_TEMPLATES.md` — каталог **шаблонов** (кнопки/сценарии + voice mapping).
+- `docs/OWNERBOT_ONBOARDING.md` — guided onboarding: status, presets, test run.
 
 ### SIS integration (contracts)
 - `docs/OWNERBOT_SIS_ACTIONS_CONTRACT.md` — **канонический** контракт SIS Actions API (как *должно быть*).

@@ -1,0 +1,13 @@
+template_id: SYS_ONBOARD_TEST_RUN
+category: systems
+title: Setup test run
+button_text: "🧪 Setup: тест"
+kind: ACTION
+tool_name: onboard_test_run
+order: 38
+default_payload:
+  force_refresh_capabilities: true
+  send_digest_now: true
+  digest_mode: dry_run
+  test_notify_team: true
+inputs: []

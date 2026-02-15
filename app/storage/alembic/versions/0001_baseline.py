@@ -117,6 +117,10 @@ def upgrade() -> None:
         sa.Column("weekly_time_local", sa.String(length=5), nullable=False, server_default="09:30"),
         sa.Column("weekly_tz", sa.String(length=64), nullable=False, server_default="Europe/Berlin"),
         sa.Column("weekly_last_sent_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("onboard_completed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("onboard_last_run_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("onboard_last_status", sa.String(length=16), nullable=True),
+        sa.Column("onboard_last_summary", sa.String(length=200), nullable=True),
         sa.Column("last_error_notice_at", sa.DateTime(timezone=True), nullable=True),
     )
 
