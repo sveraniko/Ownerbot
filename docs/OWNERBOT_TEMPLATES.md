@@ -453,3 +453,8 @@ TemplateSpec поля:
 Voice phrases:
 - «прогноз спроса», «прогноз на 7 дней», «что будет продаваться» → `demand_forecast`
 - «план закупки», «план дозакупки», «что докупить» → `reorder_plan`
+
+
+- `notifications_ntf_quiet_digest_on.yml` — кнопка `Quiet Digest ON` (`ntf_quiet_digest_on`).
+- `notifications_ntf_quiet_digest_off.yml` — кнопка `Quiet Digest OFF` (`ntf_quiet_digest_off`).
+- `notifications_ntf_quiet_digest_rules_set.yml` — кнопка `Quiet Digest rules` (`ntf_quiet_digest_rules_set`).

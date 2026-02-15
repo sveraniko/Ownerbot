@@ -5,6 +5,10 @@ from app.notify.engine import (
     make_fx_apply_event_key,
     make_ops_event_key,
     should_send_digest,
+    parse_pct_safe,
+    quiet_digest_triggered,
+    should_attempt_digest_quiet,
+    should_force_heartbeat,
     should_send_fx_apply_event,
     should_send_fx_delta,
     should_send_ops_alert,
@@ -102,3 +106,118 @@ def test_should_send_ops_alert_dedupe_and_cooldown() -> None:
     assert should_send_ops_alert(now, None, 6, None, "k") is True
     assert should_send_ops_alert(now, None, 6, "k", "k") is False
     assert should_send_ops_alert(now, datetime(2025, 1, 2, 10, 0, tzinfo=timezone.utc), 6, None, "k2") is False
+
+
+def test_parse_pct_safe_variants() -> None:
+    assert parse_pct_safe(-12.5) == -12.5
+    assert parse_pct_safe("-7.25%") == -7.25
+    assert parse_pct_safe("bad") is None
+
+
+def test_quiet_digest_triggered_kpi_revenue_drop() -> None:
+    triggered, reasons, debug = quiet_digest_triggered(
+        {"revenue_net_wow_pct": -12.4, "orders_paid_wow_pct": -2.0},
+        ops_snapshot=None,
+        fx_status_payload=None,
+        rules={"digest_quiet_min_revenue_drop_pct": 8.0, "digest_quiet_min_orders_drop_pct": 10.0},
+    )
+    assert triggered is True
+    assert any("kpi_revenue_drop" in x for x in reasons)
+    assert debug["revenue_net_wow_pct"] == -12.4
+
+
+def test_quiet_digest_triggered_orders_drop() -> None:
+    triggered, reasons, _ = quiet_digest_triggered(
+        {"revenue_net_wow_pct": -1.0, "orders_paid_wow_pct": -15.0},
+        ops_snapshot=None,
+        fx_status_payload=None,
+        rules={"digest_quiet_min_revenue_drop_pct": 8.0, "digest_quiet_min_orders_drop_pct": 10.0},
+    )
+    assert triggered is True
+    assert any("kpi_orders_drop" in x for x in reasons)
+
+
+def test_quiet_digest_triggered_ops_and_errors_and_fx() -> None:
+    snapshot = {
+        "unanswered_chats": {"count": 3, "threshold_hours": 2},
+        "stuck_orders": {"count": 0},
+        "payment_issues": {"count": 0},
+        "errors": {"count": 5, "window_hours": 24},
+        "inventory": {"out_of_stock": 0, "low_stock": 0},
+    }
+    triggered, reasons, _ = quiet_digest_triggered(
+        {"revenue_net_wow_pct": 0.0, "orders_paid_wow_pct": 0.0},
+        ops_snapshot=snapshot,
+        fx_status_payload={"last_apply": {"at": "2025-01-02T10:00:00+00:00", "result": "failed"}},
+        rules={
+            "digest_quiet_min_revenue_drop_pct": 8.0,
+            "digest_quiet_min_orders_drop_pct": 10.0,
+            "digest_quiet_send_on_ops": True,
+            "digest_quiet_send_on_fx_failed": True,
+            "digest_quiet_send_on_errors": True,
+            "ops_unanswered_enabled": True,
+            "ops_unanswered_min_count": 1,
+            "ops_unanswered_threshold_hours": 2,
+            "ops_errors_enabled": True,
+            "ops_errors_min_count": 2,
+            "ops_errors_window_hours": 24,
+        },
+    )
+    assert triggered is True
+    assert any(x.startswith("ops:unanswered") for x in reasons)
+    assert "fx_failed" in reasons
+
+
+def test_quiet_digest_triggered_no_anomaly_returns_false() -> None:
+    triggered, reasons, _ = quiet_digest_triggered(
+        {"revenue_net_wow_pct": -2.0, "orders_paid_wow_pct": -3.0},
+        ops_snapshot={
+            "unanswered_chats": {"count": 0},
+            "stuck_orders": {"count": 0},
+            "payment_issues": {"count": 0},
+            "errors": {"count": 0},
+            "inventory": {"out_of_stock": 0, "low_stock": 0},
+        },
+        fx_status_payload={"last_apply": {"at": "2025-01-02T10:00:00+00:00", "result": "noop"}},
+        rules={"digest_quiet_send_on_ops": True, "digest_quiet_send_on_fx_failed": True, "digest_quiet_send_on_errors": True},
+    )
+    assert triggered is False
+    assert reasons == []
+
+
+def test_should_attempt_digest_quiet_rules() -> None:
+    assert should_attempt_digest_quiet(
+        now_local=datetime(2025, 1, 2, 8, 0),
+        last_sent_local=None,
+        last_attempt_local=None,
+        digest_time_local="09:00",
+        attempt_interval_minutes=60,
+    ) is False
+    assert should_attempt_digest_quiet(
+        now_local=datetime(2025, 1, 2, 9, 1),
+        last_sent_local=None,
+        last_attempt_local=None,
+        digest_time_local="09:00",
+        attempt_interval_minutes=60,
+    ) is True
+    assert should_attempt_digest_quiet(
+        now_local=datetime(2025, 1, 2, 9, 30),
+        last_sent_local=None,
+        last_attempt_local=datetime(2025, 1, 2, 9, 0),
+        digest_time_local="09:00",
+        attempt_interval_minutes=60,
+    ) is False
+    assert should_attempt_digest_quiet(
+        now_local=datetime(2025, 1, 2, 10, 1),
+        last_sent_local=None,
+        last_attempt_local=datetime(2025, 1, 2, 9, 0),
+        digest_time_local="09:00",
+        attempt_interval_minutes=60,
+    ) is True
+
+
+def test_should_force_heartbeat() -> None:
+    now = datetime(2025, 1, 10, tzinfo=timezone.utc)
+    assert should_force_heartbeat(now, None, 7) is True
+    assert should_force_heartbeat(now, datetime(2025, 1, 1, tzinfo=timezone.utc), 7) is True
+    assert should_force_heartbeat(now, datetime(2025, 1, 5, tzinfo=timezone.utc), 7) is False

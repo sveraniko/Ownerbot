@@ -53,6 +53,9 @@ from app.tools.impl import (
     ntf_send_weekly_now,
     ntf_ops_alerts_subscribe,
     ntf_ops_alerts_unsubscribe,
+    ntf_quiet_digest_on,
+    ntf_quiet_digest_off,
+    ntf_quiet_digest_rules_set,
     biz_dashboard_daily,
     biz_dashboard_weekly,
     biz_dashboard_ops,
@@ -112,6 +115,9 @@ def build_registry() -> ToolRegistry:
     registry.register("ntf_send_weekly_now", "1.0", ntf_send_weekly_now.Payload, ntf_send_weekly_now.handle)
     registry.register("ntf_ops_alerts_subscribe", "1.0", ntf_ops_alerts_subscribe.Payload, ntf_ops_alerts_subscribe.handle)
     registry.register("ntf_ops_alerts_unsubscribe", "1.0", ntf_ops_alerts_unsubscribe.Payload, ntf_ops_alerts_unsubscribe.handle)
+    registry.register("ntf_quiet_digest_on", "1.0", ntf_quiet_digest_on.Payload, ntf_quiet_digest_on.handle)
+    registry.register("ntf_quiet_digest_off", "1.0", ntf_quiet_digest_off.Payload, ntf_quiet_digest_off.handle)
+    registry.register("ntf_quiet_digest_rules_set", "1.0", ntf_quiet_digest_rules_set.Payload, ntf_quiet_digest_rules_set.handle)
     registry.register("biz_dashboard_daily", "1.0", biz_dashboard_daily.Payload, biz_dashboard_daily.handle)
     registry.register("biz_dashboard_weekly", "1.0", biz_dashboard_weekly.Payload, biz_dashboard_weekly.handle)
     registry.register("biz_dashboard_ops", "1.0", biz_dashboard_ops.Payload, biz_dashboard_ops.handle)

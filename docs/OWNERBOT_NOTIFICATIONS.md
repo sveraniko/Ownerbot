@@ -45,3 +45,10 @@ OwnerBot notifications — owner-only подсистема уведомлени�
 - Alert is sent only when thresholds are triggered and both dedupe key + cooldown allow sending (`ops_alerts_cooldown_hours`, default 6h).
 - Tool failures are throttled (`ops_alerts_last_error_notice_at`, 12h) and audited via `notify_ops_alert_tool_failed` without spamming Telegram.
 - Safety: `ops_alerts_last_seen_key` / `ops_alerts_last_sent_at` are updated only after successful delivery.
+
+
+## Quiet daily digest (OB-NOTIFY-05)
+- По умолчанию выключен (`digest_quiet_enabled=false`) и текущий digest-поток не меняется.
+- После `digest_time_local` worker делает попытку не чаще `digest_quiet_attempt_interval_minutes` (по умолчанию 60 минут).
+- Digest отправляется только при аномалиях (KPI drop / ops / fx_failed / errors) или когда сработал heartbeat по `digest_quiet_max_silence_days` (по умолчанию 7 дней).
+- При скипе пишется audit `notify_digest_skipped_quiet` и обновляется `digest_last_skipped_at`, без spam-предупреждений по ops warnings.

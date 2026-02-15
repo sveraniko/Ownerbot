@@ -29,10 +29,13 @@ from app.notify import (
     should_send_fx_apply_event,
     should_send_fx_delta,
     should_send_weekly,
+    should_attempt_digest_quiet,
+    should_force_heartbeat,
+    quiet_digest_triggered,
     alert_triggered,
     build_ops_snapshot,
 )
-from app.tools.impl import sis_fx_status
+from app.tools.impl import kpi_compare, sis_fx_status
 
 
 @dataclass
@@ -110,7 +113,7 @@ class NotifyWorker:
                 await self._maybe_send_ops_alert(owner_id, notify_settings, session, ops_snapshot)
 
             if notify_settings.digest_enabled:
-                await self._maybe_send_digest(owner_id, notify_settings, session, ops_snapshot=ops_snapshot)
+                await self._maybe_send_digest(owner_id, notify_settings, session, ops_snapshot=ops_snapshot, fx_status_response=fx_status_response)
 
             if notify_settings.weekly_enabled:
                 await self._maybe_send_weekly(owner_id, notify_settings, session)
@@ -369,7 +372,7 @@ class NotifyWorker:
             lines.append(f"❗ {error_text}")
         return "\n".join(lines)
 
-    async def _maybe_send_digest(self, owner_id: int, notify_settings, session, ops_snapshot: dict[str, object] | None = None) -> None:
+    async def _maybe_send_digest(self, owner_id: int, notify_settings, session, ops_snapshot: dict[str, object] | None = None, fx_status_response=None) -> None:
         now_utc = datetime.now(timezone.utc)
         try:
             tz = ZoneInfo(str(notify_settings.digest_tz))
@@ -377,11 +380,92 @@ class NotifyWorker:
             tz = ZoneInfo("Europe/Berlin")
         now_local = now_utc.astimezone(tz)
         last_sent_local = notify_settings.digest_last_sent_at.astimezone(tz) if notify_settings.digest_last_sent_at else None
-        if not should_send_digest(now_local=now_local, last_sent_at=last_sent_local, digest_time_local=notify_settings.digest_time_local):
-            return
+        quiet_enabled = bool(getattr(notify_settings, "digest_quiet_enabled", False))
+        quiet_reasons: list[str] = []
 
-        if ops_snapshot is not None and ops_snapshot.get("warnings"):
-            await self._notify_ops_tool_warning_with_cooldown(notify_settings, owner_id, session, list(ops_snapshot.get("warnings") or []))
+        if not quiet_enabled:
+            if not should_send_digest(now_local=now_local, last_sent_at=last_sent_local, digest_time_local=notify_settings.digest_time_local):
+                return
+            if ops_snapshot is not None and ops_snapshot.get("warnings"):
+                await self._notify_ops_tool_warning_with_cooldown(notify_settings, owner_id, session, list(ops_snapshot.get("warnings") or []))
+        else:
+            last_attempt_local = notify_settings.digest_last_attempt_at.astimezone(tz) if notify_settings.digest_last_attempt_at else None
+            should_attempt = should_attempt_digest_quiet(
+                now_local=now_local,
+                last_sent_local=last_sent_local,
+                last_attempt_local=last_attempt_local,
+                digest_time_local=notify_settings.digest_time_local,
+                attempt_interval_minutes=int(getattr(notify_settings, "digest_quiet_attempt_interval_minutes", 60) or 60),
+            )
+            if not should_attempt:
+                return
+
+            notify_settings.digest_last_attempt_at = now_utc
+            await session.commit()
+
+            precheck_kpi = {}
+            try:
+                kpi_res = await kpi_compare.handle(
+                    kpi_compare.Payload(preset="wow"),
+                    correlation_id=f"notify-digest-quiet-precheck-{owner_id}-kpi",
+                    session=session,
+                )
+                if kpi_res.status == "ok":
+                    delta = (kpi_res.data.get("delta") or {})
+                    precheck_kpi = {
+                        "revenue_net_wow_pct": (delta.get("revenue_net_sum") or {}).get("delta_pct"),
+                        "orders_paid_wow_pct": (delta.get("orders_paid_sum") or {}).get("delta_pct"),
+                    }
+            except Exception as exc:
+                await write_audit_event("notify_digest_precheck_failed", {"owner_id": owner_id, "stage": "kpi_compare", "message": str(exc)[:200]})
+
+            digest_include_ops = bool(getattr(notify_settings, "digest_include_ops", True))
+            digest_include_fx = bool(getattr(notify_settings, "digest_include_fx", True))
+            if digest_include_ops and ops_snapshot is None:
+                ops_snapshot = await build_ops_snapshot(
+                    session,
+                    correlation_id=f"notify-ops-digest-precheck-{owner_id}",
+                    rules=self._ops_rules_from_settings(notify_settings),
+                )
+            if digest_include_fx and fx_status_response is None:
+                fx_status_response = await sis_fx_status.handle(
+                    sis_fx_status.Payload(),
+                    correlation_id=f"notify-fx-digest-precheck-{owner_id}",
+                    session=session,
+                )
+
+            fx_payload = fx_status_response.data if fx_status_response is not None and getattr(fx_status_response, "status", None) == "ok" else None
+            quiet_triggered, quiet_reasons, quiet_debug = quiet_digest_triggered(
+                kpi_summary=precheck_kpi,
+                ops_snapshot=ops_snapshot if digest_include_ops else None,
+                fx_status_payload=fx_payload if digest_include_fx else None,
+                rules=self._ops_rules_from_settings(notify_settings)
+                | {
+                    "digest_quiet_min_revenue_drop_pct": float(getattr(notify_settings, "digest_quiet_min_revenue_drop_pct", 8.0)),
+                    "digest_quiet_min_orders_drop_pct": float(getattr(notify_settings, "digest_quiet_min_orders_drop_pct", 10.0)),
+                    "digest_quiet_send_on_ops": bool(getattr(notify_settings, "digest_quiet_send_on_ops", True)),
+                    "digest_quiet_send_on_fx_failed": bool(getattr(notify_settings, "digest_quiet_send_on_fx_failed", True)),
+                    "digest_quiet_send_on_errors": bool(getattr(notify_settings, "digest_quiet_send_on_errors", True)),
+                },
+            )
+            heartbeat_forced = should_force_heartbeat(
+                now_utc=now_utc,
+                last_sent_at_utc=notify_settings.digest_last_sent_at,
+                max_silence_days=int(getattr(notify_settings, "digest_quiet_max_silence_days", 7) or 7),
+            )
+            if not quiet_triggered and not heartbeat_forced:
+                notify_settings.digest_last_skipped_at = now_utc
+                await session.commit()
+                await write_audit_event(
+                    "notify_digest_skipped_quiet",
+                    {
+                        "owner_id": owner_id,
+                        "date": now_local.date().isoformat(),
+                        "reasons": [],
+                        "debug": quiet_debug,
+                    },
+                )
+                return
 
         bundle = await build_daily_digest(owner_id, session, correlation_id=f"notify-digest-{owner_id}", ops_snapshot=ops_snapshot)
         digest_format = normalize_digest_format(notify_settings.digest_format)
@@ -405,7 +489,10 @@ class NotifyWorker:
 
         notify_settings.digest_last_sent_at = now_utc
         await session.commit()
-        await write_audit_event("notify_digest_sent_v2", {"owner_id": owner_id, "date": now_local.date().isoformat(), "format": digest_format})
+        if quiet_enabled:
+            await write_audit_event("notify_digest_sent_quiet_v1", {"owner_id": owner_id, "date": now_local.date().isoformat(), "format": digest_format, "reasons": quiet_reasons[:10]})
+        else:
+            await write_audit_event("notify_digest_sent_v2", {"owner_id": owner_id, "date": now_local.date().isoformat(), "format": digest_format})
 
     async def _maybe_send_weekly(self, owner_id: int, notify_settings, session) -> None:
         now_utc = datetime.now(timezone.utc)

@@ -62,6 +62,16 @@ async def handle(payload: Payload, correlation_id: str, session, actor: ToolActo
         "digest_include_fx": settings.digest_include_fx,
         "digest_include_ops": settings.digest_include_ops,
         "digest_include_kpi": settings.digest_include_kpi,
+        "digest_quiet_enabled": settings.digest_quiet_enabled,
+        "digest_quiet_attempt_interval_minutes": int(settings.digest_quiet_attempt_interval_minutes),
+        "digest_quiet_max_silence_days": int(settings.digest_quiet_max_silence_days),
+        "digest_quiet_min_revenue_drop_pct": float(settings.digest_quiet_min_revenue_drop_pct),
+        "digest_quiet_min_orders_drop_pct": float(settings.digest_quiet_min_orders_drop_pct),
+        "digest_quiet_send_on_ops": settings.digest_quiet_send_on_ops,
+        "digest_quiet_send_on_fx_failed": settings.digest_quiet_send_on_fx_failed,
+        "digest_quiet_send_on_errors": settings.digest_quiet_send_on_errors,
+        "digest_last_attempt_at": settings.digest_last_attempt_at.isoformat() if settings.digest_last_attempt_at else None,
+        "digest_last_skipped_at": settings.digest_last_skipped_at.isoformat() if settings.digest_last_skipped_at else None,
         "next_digest_at_local": next_digest.isoformat(),
         "weekly_enabled": settings.weekly_enabled,
         "weekly_day_of_week": weekly_dow,
@@ -86,6 +96,7 @@ async def handle(payload: Payload, correlation_id: str, session, actor: ToolActo
             f"FX Δ: {'on' if settings.fx_delta_enabled else 'off'} ({float(settings.fx_delta_min_percent):.2f}%/{settings.fx_delta_cooldown_hours}ч)\n"
             f"FX apply: {'on' if settings.fx_apply_events_enabled else 'off'} (applied={settings.fx_apply_notify_applied}, noop={settings.fx_apply_notify_noop}, failed={settings.fx_apply_notify_failed}, cd={settings.fx_apply_events_cooldown_hours}ч)\n"
             f"Digest: {'on' if settings.digest_enabled else 'off'} ({settings.digest_time_local} {settings.digest_tz}, format={normalize_digest_format(settings.digest_format)})\n"
+            f"Quiet digest: {'on' if settings.digest_quiet_enabled else 'off'} (interval={int(settings.digest_quiet_attempt_interval_minutes)}m, silence={int(settings.digest_quiet_max_silence_days)}d)\n"
             f"Weekly: {'on' if settings.weekly_enabled else 'off'} (dow={weekly_dow}, {settings.weekly_time_local} {settings.weekly_tz})\n"
             f"Ops alerts: {'on' if settings.ops_alerts_enabled else 'off'} (cd={settings.ops_alerts_cooldown_hours}ч, unanswered>{settings.ops_unanswered_threshold_hours}h, low<={settings.ops_low_stock_lte})"
         ),

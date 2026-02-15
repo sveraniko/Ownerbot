@@ -102,3 +102,9 @@ def test_business_dashboard_ops_intent() -> None:
 
     assert result.tool == "biz_dashboard_ops"
     assert result.payload == {"format": "pdf", "tz": "Europe/Berlin"}
+
+
+def test_quiet_digest_intents() -> None:
+    assert route_intent("тихий дайджест включи").tool == "ntf_quiet_digest_on"
+    assert route_intent("тихий дайджест выключи").tool == "ntf_quiet_digest_off"
+    assert route_intent("настрой тихий дайджест").tool == "ntf_quiet_digest_rules_set"
