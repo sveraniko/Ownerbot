@@ -2,12 +2,46 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Any
 
 
 ALLOWED_DIGEST_FORMATS = {"text", "png", "pdf"}
 FX_APPLY_RESULTS = {"applied", "noop", "failed"}
 
+
+
+
+def clamp_int(value: int | float, *, min_value: int, max_value: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = min_value
+    return max(min_value, min(parsed, max_value))
+
+
+def clamp_float(value: float | int, *, min_value: float, max_value: float) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        parsed = min_value
+    return max(min_value, min(parsed, max_value))
+
+
+def parse_pct_safe(value: Any) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float, Decimal)):
+        return float(value)
+    if isinstance(value, str):
+        raw = value.strip().replace('%', '')
+        if not raw:
+            return None
+        try:
+            return float(raw)
+        except ValueError:
+            return None
+    return None
 
 def parse_datetime_safe(value: Any) -> datetime | None:
     if isinstance(value, datetime):
@@ -302,3 +336,76 @@ def alert_triggered(snapshot: dict[str, Any], rules: dict[str, Any]) -> tuple[bo
         reasons.append(f"low_stock<={int(rules.get('ops_low_stock_lte', 5))}:{int(inventory.get('low_stock') or 0)}")
 
     return (len(reasons) > 0), reasons
+
+
+def quiet_digest_triggered(
+    kpi_summary: dict[str, Any],
+    ops_snapshot: dict[str, Any] | None,
+    fx_status_payload: dict[str, Any] | None,
+    rules: dict[str, Any],
+) -> tuple[bool, list[str], dict[str, Any]]:
+    reasons: list[str] = []
+    debug: dict[str, Any] = {}
+
+    revenue_drop_limit = clamp_float(float(rules.get("digest_quiet_min_revenue_drop_pct", 8.0)), min_value=0.1, max_value=50.0)
+    orders_drop_limit = clamp_float(float(rules.get("digest_quiet_min_orders_drop_pct", 10.0)), min_value=0.1, max_value=50.0)
+    revenue_pct = parse_pct_safe(kpi_summary.get("revenue_net_wow_pct"))
+    orders_pct = parse_pct_safe(kpi_summary.get("orders_paid_wow_pct"))
+    debug["revenue_net_wow_pct"] = revenue_pct
+    debug["orders_paid_wow_pct"] = orders_pct
+
+    if revenue_pct is not None and revenue_pct <= -revenue_drop_limit:
+        reasons.append(f"kpi_revenue_drop={revenue_pct:.1f}%<=-{revenue_drop_limit:.1f}%")
+    if orders_pct is not None and orders_pct <= -orders_drop_limit:
+        reasons.append(f"kpi_orders_drop={orders_pct:.1f}%<=-{orders_drop_limit:.1f}%")
+
+    if bool(rules.get("digest_quiet_send_on_ops", True)) and ops_snapshot:
+        ops_triggered, ops_reasons = alert_triggered(ops_snapshot, rules)
+        if ops_triggered:
+            reasons.extend([f"ops:{reason}" for reason in ops_reasons])
+
+    if bool(rules.get("digest_quiet_send_on_errors", True)) and ops_snapshot:
+        errors_count = int((ops_snapshot.get("errors") or {}).get("count") or 0)
+        errors_min_count = int(rules.get("ops_errors_min_count", 1) or 1)
+        errors_window_hours = int(rules.get("ops_errors_window_hours", 24) or 24)
+        debug["errors_count"] = errors_count
+        if errors_count >= errors_min_count:
+            reason = f"ops:errors({errors_window_hours}h)={errors_count}"
+            if reason not in reasons:
+                reasons.append(reason)
+
+    if bool(rules.get("digest_quiet_send_on_fx_failed", True)) and fx_status_payload:
+        last_apply, warning = extract_fx_last_apply(fx_status_payload)
+        debug["fx_last_apply_warning"] = warning
+        if warning is None and isinstance(last_apply, dict) and str(last_apply.get("result") or "") == "failed":
+            reasons.append("fx_failed")
+
+    return (len(reasons) > 0), reasons, debug
+
+
+def should_attempt_digest_quiet(
+    now_local: datetime,
+    last_sent_local: datetime | None,
+    last_attempt_local: datetime | None,
+    digest_time_local: str,
+    attempt_interval_minutes: int,
+) -> bool:
+    target_hour, target_minute = parse_time_local_or_default(digest_time_local)
+    scheduled_today = now_local.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
+    if now_local < scheduled_today:
+        return False
+    if last_sent_local is not None and last_sent_local.date() == now_local.date():
+        return False
+    interval = clamp_int(attempt_interval_minutes, min_value=15, max_value=360)
+    if last_attempt_local is None:
+        return True
+    return (now_local - last_attempt_local) >= timedelta(minutes=interval)
+
+
+def should_force_heartbeat(now_utc: datetime, last_sent_at_utc: datetime | None, max_silence_days: int) -> bool:
+    days = clamp_int(max_silence_days, min_value=1, max_value=30)
+    if last_sent_at_utc is None:
+        return True
+    if last_sent_at_utc.tzinfo is None:
+        last_sent_at_utc = last_sent_at_utc.replace(tzinfo=timezone.utc)
+    return (now_utc - last_sent_at_utc) >= timedelta(days=days)

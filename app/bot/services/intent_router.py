@@ -74,6 +74,15 @@ def route_intent(text: str) -> IntentResult:
     if "обнови цены" in normalized or "пересчитай цены" in normalized or "fx пересчет" in normalized:
         return IntentResult(tool="sis_fx_reprice_auto", payload={"dry_run": True, "force": False, "refresh_snapshot": True})
 
+    if "тихий дайджест включи" in normalized:
+        return IntentResult(tool="ntf_quiet_digest_on", payload={})
+
+    if "тихий дайджест выключи" in normalized:
+        return IntentResult(tool="ntf_quiet_digest_off", payload={})
+
+    if "настрой тихий дайджест" in normalized:
+        return IntentResult(tool="ntf_quiet_digest_rules_set", payload={})
+
     # 1) notify_team
     if normalized.startswith("/notify"):
         message = re.sub(r"^/notify(?:@\w+)?\s*", "", text, flags=re.IGNORECASE).strip()

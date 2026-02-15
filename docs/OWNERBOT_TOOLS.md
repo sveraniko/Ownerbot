@@ -95,6 +95,9 @@
 - `ntf_send_weekly_now` — ручной тестовый weekly (debug).
 - `ntf_ops_alerts_subscribe` — включить ops alerts (`cooldown_hours`, пороги unanswered/stuck/payment/errors/inventory).
 - `ntf_ops_alerts_unsubscribe` — выключить ops alerts.
+- `ntf_quiet_digest_on` — включить quiet daily digest (attempt interval + max silence heartbeat).
+- `ntf_quiet_digest_off` — выключить quiet daily digest и вернуть обычную отправку по расписанию.
+- `ntf_quiet_digest_rules_set` — обновить quiet-пороги (KPI drop/ops/fx/errors) и attempt/silence-параметры.
 - `biz_dashboard_daily` — owner on-demand daily dashboard (`format=text|png|pdf`, `tz`, `horizon_days=1`) with Redis cooldown+lock; reuses digest builder/renderers.
 - `biz_dashboard_weekly` — owner on-demand weekly dashboard (`format=pdf`, `tz`, `week_mode=last7`) with Redis cooldown+lock; reuses weekly digest renderer.
 - `biz_dashboard_ops` — owner on-demand ops report (`format=pdf`, `tz`, `rules?`) with Redis cooldown+lock; reuses ops snapshot builder + compact PDF renderer, degrades with warnings when upstream tools fail.

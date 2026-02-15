@@ -3,7 +3,13 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.notify.engine import normalize_digest_format, normalize_weekly_day_of_week, parse_time_local_or_default
+from app.notify.engine import (
+    clamp_float,
+    clamp_int,
+    normalize_digest_format,
+    normalize_weekly_day_of_week,
+    parse_time_local_or_default,
+)
 from app.storage.models import OwnerNotifySettings
 
 
@@ -141,6 +147,52 @@ class NotificationSettingsService:
             if hasattr(settings, attr) and value is not None:
                 setattr(settings, attr, value)
 
+        await session.commit()
+        await session.refresh(settings)
+        return settings
+
+
+    @staticmethod
+    async def set_digest_quiet_mode(
+        session: AsyncSession,
+        owner_id: int,
+        *,
+        enabled: bool,
+        attempt_interval_minutes: int | None = None,
+        max_silence_days: int | None = None,
+    ) -> OwnerNotifySettings:
+        settings = await NotificationSettingsService.get_or_create(session, owner_id)
+        settings.digest_quiet_enabled = enabled
+        if attempt_interval_minutes is not None:
+            settings.digest_quiet_attempt_interval_minutes = clamp_int(attempt_interval_minutes, min_value=15, max_value=360)
+        if max_silence_days is not None:
+            settings.digest_quiet_max_silence_days = clamp_int(max_silence_days, min_value=1, max_value=30)
+        await session.commit()
+        await session.refresh(settings)
+        return settings
+
+    @staticmethod
+    async def set_digest_quiet_rules(
+        session: AsyncSession,
+        owner_id: int,
+        *,
+        min_revenue_drop_pct: float | None = None,
+        min_orders_drop_pct: float | None = None,
+        send_on_ops: bool | None = None,
+        send_on_fx_failed: bool | None = None,
+        send_on_errors: bool | None = None,
+    ) -> OwnerNotifySettings:
+        settings = await NotificationSettingsService.get_or_create(session, owner_id)
+        if min_revenue_drop_pct is not None:
+            settings.digest_quiet_min_revenue_drop_pct = clamp_float(min_revenue_drop_pct, min_value=0.1, max_value=50.0)
+        if min_orders_drop_pct is not None:
+            settings.digest_quiet_min_orders_drop_pct = clamp_float(min_orders_drop_pct, min_value=0.1, max_value=50.0)
+        if send_on_ops is not None:
+            settings.digest_quiet_send_on_ops = bool(send_on_ops)
+        if send_on_fx_failed is not None:
+            settings.digest_quiet_send_on_fx_failed = bool(send_on_fx_failed)
+        if send_on_errors is not None:
+            settings.digest_quiet_send_on_errors = bool(send_on_errors)
         await session.commit()
         await session.refresh(settings)
         return settings

@@ -1,0 +1,9 @@
+template_id: NTF_QUIET_DIGEST_OFF
+category: notifications
+title: Выключить quiet daily digest
+button_text: Quiet Digest OFF
+kind: ACTION
+tool_name: ntf_quiet_digest_off
+order: 45
+default_payload: {}
+inputs: []

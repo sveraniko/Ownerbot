@@ -1,0 +1,30 @@
+template_id: NTF_QUIET_DIGEST_RULES_SET
+category: notifications
+title: Настроить quiet daily digest
+button_text: Quiet Digest rules
+kind: ACTION
+tool_name: ntf_quiet_digest_rules_set
+order: 46
+default_payload: {}
+inputs:
+  - key: min_revenue_drop_pct
+    prompt: Минимальная просадка revenue WoW в %
+    parser: str
+  - key: min_orders_drop_pct
+    prompt: Минимальная просадка paid orders WoW в %
+    parser: str
+  - key: attempt_interval_minutes
+    prompt: Интервал попыток после scheduled time (минуты)
+    parser: int
+  - key: max_silence_days
+    prompt: Максимум дней тишины до heartbeat
+    parser: int
+  - key: send_on_ops
+    prompt: Отправлять при OPS аномалиях? (true/false)
+    parser: str
+  - key: send_on_fx_failed
+    prompt: Отправлять при FX failed? (true/false)
+    parser: str
+  - key: send_on_errors
+    prompt: Отправлять при errors threshold? (true/false)
+    parser: str

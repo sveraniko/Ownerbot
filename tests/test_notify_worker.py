@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -446,3 +447,115 @@ async def test_ops_tool_warning_throttled(monkeypatch):
     calls = [c.args[0] for c in audit_mock.await_args_list if c.args]
     assert calls.count("notify_ops_alert_tool_failed") == 1
     assert bot.send_message.await_count == 0
+
+
+@pytest.mark.asyncio
+async def test_quiet_digest_skip_updates_attempt_and_skipped_without_sending(monkeypatch):
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with async_session() as session:
+        session.add(
+            OwnerNotifySettings(
+                owner_id=21,
+                digest_enabled=True,
+                digest_time_local="00:00",
+                digest_tz="UTC",
+                digest_quiet_enabled=True,
+                digest_quiet_send_on_ops=True,
+                digest_quiet_send_on_fx_failed=True,
+                digest_quiet_send_on_errors=True,
+                digest_last_sent_at=datetime.now(timezone.utc) - timedelta(days=1),
+            )
+        )
+        await session.commit()
+
+    @asynccontextmanager
+    async def fake_scope():
+        async with async_session() as s:
+            yield s
+
+    bot = SimpleNamespace(send_message=AsyncMock(), send_photo=AsyncMock(), send_document=AsyncMock())
+    worker = NotifyWorker(bot)
+
+    digest_mock = AsyncMock(return_value=SimpleNamespace(text="digest", series=[], kpi_summary={}, ops_summary={}, fx_summary={}, warnings=[]))
+    ops_warning_mock = AsyncMock()
+    monkeypatch.setattr("app.core.tasks.notify_worker.session_scope", fake_scope)
+    monkeypatch.setattr("app.core.tasks.notify_worker.get_redis", AsyncMock(side_effect=lambda: FakeRedis(lock=True)))
+    monkeypatch.setattr("app.core.tasks.notify_worker.get_settings", lambda: SimpleNamespace(owner_ids=[21]))
+    monkeypatch.setattr("app.core.tasks.notify_worker.build_daily_digest", digest_mock)
+    monkeypatch.setattr("app.core.tasks.notify_worker.kpi_compare.handle", AsyncMock(return_value=SimpleNamespace(status="ok", data={"delta": {"revenue_net_sum": {"delta_pct": -1.0}, "orders_paid_sum": {"delta_pct": -1.0}}})))
+    monkeypatch.setattr(
+        "app.core.tasks.notify_worker.build_ops_snapshot",
+        AsyncMock(
+            return_value={
+                "unanswered_chats": {"count": 0},
+                "stuck_orders": {"count": 0},
+                "payment_issues": {"count": 0},
+                "errors": {"count": 0},
+                "inventory": {"out_of_stock": 0, "low_stock": 0},
+                "warnings": ["warn"],
+            }
+        ),
+    )
+    monkeypatch.setattr("app.core.tasks.notify_worker.sis_fx_status.handle", AsyncMock(return_value=SimpleNamespace(status="ok", data={"last_apply": {"at": "2025-01-02T10:00:00+00:00", "result": "noop"}})))
+    monkeypatch.setattr(worker, "_notify_ops_tool_warning_with_cooldown", ops_warning_mock)
+
+    await worker.tick()
+
+    digest_mock.assert_not_awaited()
+    bot.send_message.assert_not_called()
+    ops_warning_mock.assert_not_awaited()
+    async with async_session() as session:
+        row = await session.get(OwnerNotifySettings, 21)
+        assert row.digest_last_attempt_at is not None
+        assert row.digest_last_skipped_at is not None
+        assert row.digest_last_sent_at is not None
+
+
+@pytest.mark.asyncio
+async def test_quiet_digest_triggered_sends_and_updates_last_sent(monkeypatch):
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with async_session() as session:
+        session.add(
+            OwnerNotifySettings(
+                owner_id=22,
+                digest_enabled=True,
+                digest_time_local="00:00",
+                digest_tz="UTC",
+                digest_quiet_enabled=True,
+                digest_format="text",
+                digest_quiet_min_revenue_drop_pct=8.0,
+            )
+        )
+        await session.commit()
+
+    @asynccontextmanager
+    async def fake_scope():
+        async with async_session() as s:
+            yield s
+
+    bot = SimpleNamespace(send_message=AsyncMock(), send_photo=AsyncMock(), send_document=AsyncMock())
+    worker = NotifyWorker(bot)
+
+    digest_mock = AsyncMock(return_value=SimpleNamespace(text="digest", series=[], kpi_summary={}, ops_summary={}, fx_summary={}, warnings=[]))
+    monkeypatch.setattr("app.core.tasks.notify_worker.session_scope", fake_scope)
+    monkeypatch.setattr("app.core.tasks.notify_worker.get_redis", AsyncMock(side_effect=lambda: FakeRedis(lock=True)))
+    monkeypatch.setattr("app.core.tasks.notify_worker.get_settings", lambda: SimpleNamespace(owner_ids=[22]))
+    monkeypatch.setattr("app.core.tasks.notify_worker.build_daily_digest", digest_mock)
+    monkeypatch.setattr("app.core.tasks.notify_worker.kpi_compare.handle", AsyncMock(return_value=SimpleNamespace(status="ok", data={"delta": {"revenue_net_sum": {"delta_pct": -20.0}, "orders_paid_sum": {"delta_pct": -1.0}}})))
+
+    await worker.tick()
+
+    digest_mock.assert_awaited_once()
+    assert bot.send_message.await_count == 1
+    async with async_session() as session:
+        row = await session.get(OwnerNotifySettings, 22)
+        assert row.digest_last_attempt_at is not None
+        assert row.digest_last_sent_at is not None
