@@ -1,0 +1,10 @@
+template_id: BIZ_DASHBOARD_WEEKLY_PDF
+category: reports
+title: Dashboard Weekly (PDF)
+button_text: "📎 Weekly (PDF)"
+kind: REPORT
+tool_name: biz_dashboard_weekly
+order: 142
+default_payload:
+  format: pdf
+inputs: []

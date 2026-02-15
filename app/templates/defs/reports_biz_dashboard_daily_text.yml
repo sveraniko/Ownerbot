@@ -1,0 +1,10 @@
+template_id: BIZ_DASHBOARD_DAILY_TEXT
+category: reports
+title: Dashboard Daily (Text)
+button_text: "📎 Daily (Text)"
+kind: REPORT
+tool_name: biz_dashboard_daily
+order: 141
+default_payload:
+  format: text
+inputs: []

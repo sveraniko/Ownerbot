@@ -49,11 +49,19 @@ class ToolError(BaseModel):
     details: Optional[Dict[str, Any]] = None
 
 
+class ToolArtifact(BaseModel):
+    type: str
+    filename: str
+    content: bytes
+    caption: str | None = None
+
+
 class ToolResponse(BaseModel):
     status: str
     correlation_id: str
     as_of: datetime
     data: Dict[str, Any] = Field(default_factory=dict)
+    artifacts: List[ToolArtifact] = Field(default_factory=list)
     warnings: List[ToolWarning] = Field(default_factory=list)
     provenance: ToolProvenance = Field(default_factory=ToolProvenance)
     error: Optional[ToolError] = None
@@ -65,6 +73,7 @@ class ToolResponse(BaseModel):
         data: Dict[str, Any],
         provenance: ToolProvenance,
         warnings: Optional[List[ToolWarning]] = None,
+        artifacts: Optional[List[ToolArtifact]] = None,
     ) -> "ToolResponse":
         return cls(
             status="ok",
@@ -72,6 +81,7 @@ class ToolResponse(BaseModel):
             as_of=utcnow(),
             data=data,
             warnings=warnings or [],
+            artifacts=artifacts or [],
             provenance=provenance,
         )
 

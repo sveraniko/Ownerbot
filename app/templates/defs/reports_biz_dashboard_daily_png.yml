@@ -1,0 +1,10 @@
+template_id: BIZ_DASHBOARD_DAILY_PNG
+category: reports
+title: Dashboard Daily (PNG)
+button_text: "📎 Daily (PNG)"
+kind: REPORT
+tool_name: biz_dashboard_daily
+order: 140
+default_payload:
+  format: png
+inputs: []
