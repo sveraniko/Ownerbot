@@ -86,6 +86,10 @@
 - `ntf_fx_delta_unsubscribe` — выключить FX delta уведомления.
 - `ntf_daily_digest_subscribe` — включить daily digest (опционально `time_local`, `tz`).
 - `ntf_daily_digest_unsubscribe` — выключить daily digest.
+- `ntf_digest_format_set` — формат daily digest: `text|png|pdf`.
+- `ntf_weekly_subscribe` — включить weekly digest (`day_of_week`, `time_local`, `tz`).
+- `ntf_weekly_unsubscribe` — выключить weekly digest.
 - `ntf_send_digest_now` — ручной тестовый запуск digest (debug).
+- `ntf_send_weekly_now` — ручной тестовый weekly (debug).
 
 > Все `ntf_*` работают только в контексте owner actor (`OWNER_IDS`) и пишут состояние в `owner_notify_settings`.

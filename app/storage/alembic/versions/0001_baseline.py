@@ -47,7 +47,16 @@ def upgrade() -> None:
         sa.Column("digest_enabled", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("digest_time_local", sa.String(length=5), nullable=False, server_default="09:00"),
         sa.Column("digest_tz", sa.String(length=64), nullable=False, server_default="Europe/Berlin"),
+        sa.Column("digest_format", sa.String(length=16), nullable=False, server_default="text"),
+        sa.Column("digest_include_fx", sa.Boolean(), nullable=False, server_default=sa.true()),
+        sa.Column("digest_include_ops", sa.Boolean(), nullable=False, server_default=sa.true()),
+        sa.Column("digest_include_kpi", sa.Boolean(), nullable=False, server_default=sa.true()),
         sa.Column("digest_last_sent_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("weekly_enabled", sa.Boolean(), nullable=False, server_default=sa.false()),
+        sa.Column("weekly_day_of_week", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("weekly_time_local", sa.String(length=5), nullable=False, server_default="09:30"),
+        sa.Column("weekly_tz", sa.String(length=64), nullable=False, server_default="Europe/Berlin"),
+        sa.Column("weekly_last_sent_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("last_error_notice_at", sa.DateTime(timezone=True), nullable=True),
     )
 
@@ -142,6 +151,11 @@ def upgrade() -> None:
         "owner_notify_settings",
         ["digest_enabled"],
     )
+    op.create_index(
+        "idx_owner_notify_settings_weekly_enabled",
+        "owner_notify_settings",
+        ["weekly_enabled"],
+    )
 
     op.create_index(
         "idx_ownerbot_audit_events_occurred_at",
@@ -228,6 +242,7 @@ def downgrade() -> None:
     op.drop_index("idx_ownerbot_audit_events_correlation_id", table_name="ownerbot_audit_events")
     op.drop_index("idx_ownerbot_audit_events_event_type_occurred_at", table_name="ownerbot_audit_events")
     op.drop_index("idx_ownerbot_audit_events_occurred_at", table_name="ownerbot_audit_events")
+    op.drop_index("idx_owner_notify_settings_weekly_enabled", table_name="owner_notify_settings")
     op.drop_index("idx_owner_notify_settings_digest_enabled", table_name="owner_notify_settings")
     op.drop_index("idx_owner_notify_settings_fx_delta_enabled", table_name="owner_notify_settings")
     op.drop_table("ownerbot_demo_chat_threads")

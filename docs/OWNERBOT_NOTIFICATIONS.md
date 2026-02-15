@@ -23,3 +23,9 @@ OwnerBot notifications — owner-only подсистема уведомлени�
 
 ## ENV
 - `NOTIFY_WORKER_ENABLED=1` — включает worker на startup (по умолчанию включён).
+
+
+## Digest v2 / Weekly
+- Daily digest v2 uses real KPI + ops + FX summaries and supports `digest_format=text|png|pdf`.
+- Weekly digest supports per-owner schedule (`weekly_enabled`, `weekly_day_of_week`, `weekly_time_local`, `weekly_tz`) and sends PDF.
+- Safety: state (`digest_last_sent_at` / `weekly_last_sent_at`) updates only after successful send.

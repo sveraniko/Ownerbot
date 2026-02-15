@@ -1,0 +1,21 @@
+template_id: NTF_WEEKLY_SUBSCRIBE
+category: notifications
+title: Включить weekly PDF
+button_text: Weekly ON
+kind: ACTION
+tool_name: ntf_weekly_subscribe
+order: 70
+default_payload:
+  day_of_week: 0
+  time_local: "09:30"
+inputs:
+  - key: day_of_week
+    prompt: day_of_week (0=Mon..6=Sun)
+    parser: int
+  - key: time_local
+    prompt: time_local (HH:MM)
+    parser: str
+  - key: tz
+    prompt: tz (optional)
+    parser: str
+    required: false

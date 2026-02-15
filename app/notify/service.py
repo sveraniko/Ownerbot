@@ -3,6 +3,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.notify.engine import normalize_digest_format, normalize_weekly_day_of_week, parse_time_local_or_default
 from app.storage.models import OwnerNotifySettings
 
 
@@ -52,9 +53,45 @@ class NotificationSettingsService:
         settings = await NotificationSettingsService.get_or_create(session, owner_id)
         settings.digest_enabled = enabled
         if time_local is not None:
-            settings.digest_time_local = time_local
+            hh, mm = parse_time_local_or_default(time_local)
+            settings.digest_time_local = f"{hh:02d}:{mm:02d}"
         if tz is not None:
             settings.digest_tz = tz
+            if not settings.weekly_tz:
+                settings.weekly_tz = tz
+        await session.commit()
+        await session.refresh(settings)
+        return settings
+
+    @staticmethod
+    async def set_digest_format(session: AsyncSession, owner_id: int, *, digest_format: str) -> OwnerNotifySettings:
+        settings = await NotificationSettingsService.get_or_create(session, owner_id)
+        settings.digest_format = normalize_digest_format(digest_format)
+        await session.commit()
+        await session.refresh(settings)
+        return settings
+
+    @staticmethod
+    async def set_weekly(
+        session: AsyncSession,
+        owner_id: int,
+        *,
+        enabled: bool,
+        day_of_week: int | None = None,
+        time_local: str | None = None,
+        tz: str | None = None,
+    ) -> OwnerNotifySettings:
+        settings = await NotificationSettingsService.get_or_create(session, owner_id)
+        settings.weekly_enabled = enabled
+        if day_of_week is not None:
+            settings.weekly_day_of_week = normalize_weekly_day_of_week(day_of_week)
+        if time_local is not None:
+            hh, mm = parse_time_local_or_default(time_local, default=(9, 30))
+            settings.weekly_time_local = f"{hh:02d}:{mm:02d}"
+        if tz is not None:
+            settings.weekly_tz = tz
+        elif not settings.weekly_tz:
+            settings.weekly_tz = settings.digest_tz
         await session.commit()
         await session.refresh(settings)
         return settings

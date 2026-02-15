@@ -46,7 +46,16 @@ class OwnerNotifySettings(Base):
     digest_enabled: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=False)
     digest_time_local: Mapped[str] = mapped_column(String(5), nullable=False, default="09:00")
     digest_tz: Mapped[str] = mapped_column(String(64), nullable=False, default="Europe/Berlin")
+    digest_format: Mapped[str] = mapped_column(String(16), nullable=False, default="text")
+    digest_include_fx: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=True)
+    digest_include_ops: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=True)
+    digest_include_kpi: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=True)
     digest_last_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    weekly_enabled: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=False)
+    weekly_day_of_week: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    weekly_time_local: Mapped[str] = mapped_column(String(5), nullable=False, default="09:30")
+    weekly_tz: Mapped[str] = mapped_column(String(64), nullable=False, default="Europe/Berlin")
+    weekly_last_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_error_notice_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 

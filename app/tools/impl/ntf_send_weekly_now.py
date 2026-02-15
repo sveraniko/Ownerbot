@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from app.notify import build_daily_digest
+from app.notify import build_weekly_digest
 from app.tools.contracts import ToolActor, ToolProvenance, ToolResponse
 
 
@@ -14,19 +14,9 @@ async def handle(payload: Payload, correlation_id: str, session, actor: ToolActo
     del payload
     if actor is None:
         return ToolResponse.fail(correlation_id=correlation_id, code="ACTOR_REQUIRED", message="Owner context is required.")
-    bundle = await build_daily_digest(actor.owner_user_id, session, correlation_id)
+    bundle = await build_weekly_digest(actor.owner_user_id, session, correlation_id)
     return ToolResponse.ok(
         correlation_id=correlation_id,
         data={"owner_id": actor.owner_user_id, "message": bundle.text, "warnings": bundle.warnings},
-        provenance=ToolProvenance(
-            sources=[
-                "kpi_compare",
-                "revenue_trend",
-                "chats_unanswered",
-                "sys_last_errors",
-                "orders_search",
-                "inventory_status",
-                "sis_fx_status",
-            ]
-        ),
+        provenance=ToolProvenance(sources=["owner_notify_settings", "kpi_compare", "revenue_trend", "orders_search", "chats_unanswered"]),
     )

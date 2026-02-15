@@ -1,0 +1,13 @@
+template_id: NTF_DIGEST_FORMAT_SET
+category: notifications
+title: Формат daily digest
+button_text: Digest format
+kind: ACTION
+tool_name: ntf_digest_format_set
+order: 55
+default_payload:
+  format: text
+inputs:
+  - key: format
+    prompt: Введи формат (text/png/pdf)
+    parser: str
