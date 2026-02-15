@@ -109,6 +109,15 @@ def route_intent(text: str) -> IntentResult:
             presentation={"kind": "chart_png", "days": days},
         )
 
+
+    forecast_demand_phrases = ["прогноз спроса", "прогноз на 7 дней", "что будет продаваться"]
+    if any(phrase in normalized for phrase in forecast_demand_phrases):
+        return IntentResult(tool="demand_forecast", payload={"horizon_days": 7})
+
+    reorder_plan_phrases = ["план закупки", "план дозакупки", "что докупить"]
+    if any(phrase in normalized for phrase in reorder_plan_phrases):
+        return IntentResult(tool="reorder_plan", payload={"lead_time_days": 14, "safety_stock_days": 7, "horizon_days": 14})
+
     # 5) chats_unanswered
     if any(word in normalized for word in ["чаты", "чат", "без ответа", "не отвечено", "не отвеч"]):
         return IntentResult(tool="chats_unanswered", payload={"limit": 10})

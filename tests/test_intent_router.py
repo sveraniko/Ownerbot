@@ -67,3 +67,17 @@ def test_fx_reprice_auto_force_intent() -> None:
 
     assert result.tool == "sis_fx_reprice_auto"
     assert result.payload["force"] is True
+
+
+def test_demand_forecast_intent_phrases() -> None:
+    result = route_intent("прогноз спроса")
+
+    assert result.tool == "demand_forecast"
+    assert result.payload["horizon_days"] == 7
+
+
+def test_reorder_plan_intent_phrases() -> None:
+    result = route_intent("что докупить")
+
+    assert result.tool == "reorder_plan"
+    assert result.payload == {"lead_time_days": 14, "safety_stock_days": 7, "horizon_days": 14}
