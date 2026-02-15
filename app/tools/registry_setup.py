@@ -65,6 +65,9 @@ from app.tools.impl import (
     biz_dashboard_daily,
     biz_dashboard_weekly,
     biz_dashboard_ops,
+    onboard_status,
+    onboard_apply_preset,
+    onboard_test_run,
 )
 
 
@@ -133,4 +136,7 @@ def build_registry() -> ToolRegistry:
     registry.register("biz_dashboard_daily", "1.0", biz_dashboard_daily.Payload, biz_dashboard_daily.handle)
     registry.register("biz_dashboard_weekly", "1.0", biz_dashboard_weekly.Payload, biz_dashboard_weekly.handle)
     registry.register("biz_dashboard_ops", "1.0", biz_dashboard_ops.Payload, biz_dashboard_ops.handle)
+    registry.register("onboard_status", "1.0", onboard_status.Payload, onboard_status.handle)
+    registry.register("onboard_apply_preset", "1.0", onboard_apply_preset.Payload, onboard_apply_preset.handle, kind="action")
+    registry.register("onboard_test_run", "1.0", onboard_test_run.Payload, onboard_test_run.handle, kind="action")
     return registry

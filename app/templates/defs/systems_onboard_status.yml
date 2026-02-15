@@ -1,0 +1,9 @@
+template_id: SYS_ONBOARD_STATUS
+category: systems
+title: Setup status
+button_text: "🚀 Setup: статус"
+kind: REPORT
+tool_name: onboard_status
+order: 34
+default_payload: {}
+inputs: []

@@ -1,0 +1,10 @@
+template_id: SYS_ONBOARD_APPLY_MINIMAL
+category: systems
+title: Setup apply minimal
+button_text: "✅ Setup: Minimal"
+kind: ACTION
+tool_name: onboard_apply_preset
+order: 37
+default_payload:
+  preset: minimal
+inputs: []
