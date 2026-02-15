@@ -1,0 +1,9 @@
+template_id: NTF_ESCALATION_ACK
+category: notifications
+title: ACK escalation
+button_text: Принято
+kind: ACTION
+tool_name: ntf_escalation_ack
+order: 52
+default_payload: {}
+inputs: []

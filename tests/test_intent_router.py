@@ -108,3 +108,11 @@ def test_quiet_digest_intents() -> None:
     assert route_intent("тихий дайджест включи").tool == "ntf_quiet_digest_on"
     assert route_intent("тихий дайджест выключи").tool == "ntf_quiet_digest_off"
     assert route_intent("настрой тихий дайджест").tool == "ntf_quiet_digest_rules_set"
+
+
+def test_escalation_intents() -> None:
+    assert route_intent("принято").tool == "ntf_escalation_ack"
+    assert route_intent("пауза 12").tool == "ntf_escalation_snooze"
+    assert route_intent("пауза 24").payload == {"hours": 24}
+    assert route_intent("эскалацию включи").tool == "ntf_escalation_enable"
+    assert route_intent("эскалацию выключи").tool == "ntf_escalation_disable"

@@ -196,3 +196,61 @@ class NotificationSettingsService:
         await session.commit()
         await session.refresh(settings)
         return settings
+
+
+    @staticmethod
+    async def set_escalation_enabled(session: AsyncSession, owner_id: int, *, enabled: bool) -> OwnerNotifySettings:
+        settings = await NotificationSettingsService.get_or_create(session, owner_id)
+        settings.escalation_enabled = bool(enabled)
+        await session.commit()
+        await session.refresh(settings)
+        return settings
+
+    @staticmethod
+    async def set_escalation_rules(
+        session: AsyncSession,
+        owner_id: int,
+        *,
+        stage1_after_minutes: int | None = None,
+        repeat_every_minutes: int | None = None,
+        max_repeats: int | None = None,
+        escalation_on_fx_failed: bool | None = None,
+        escalation_on_out_of_stock: bool | None = None,
+        escalation_on_stuck_orders_severe: bool | None = None,
+        escalation_on_errors_spike: bool | None = None,
+        escalation_on_unanswered_chats_severe: bool | None = None,
+        escalation_stuck_orders_min: int | None = None,
+        escalation_errors_min: int | None = None,
+        escalation_unanswered_chats_min: int | None = None,
+        escalation_unanswered_threshold_hours: int | None = None,
+    ) -> OwnerNotifySettings:
+        settings = await NotificationSettingsService.get_or_create(session, owner_id)
+        if stage1_after_minutes is not None:
+            settings.escalation_stage1_after_minutes = clamp_int(stage1_after_minutes, min_value=30, max_value=1440)
+        if repeat_every_minutes is not None:
+            settings.escalation_repeat_every_minutes = clamp_int(repeat_every_minutes, min_value=60, max_value=2880)
+        if max_repeats is not None:
+            settings.escalation_max_repeats = clamp_int(max_repeats, min_value=0, max_value=10)
+
+        for attr, value in {
+            "escalation_on_fx_failed": escalation_on_fx_failed,
+            "escalation_on_out_of_stock": escalation_on_out_of_stock,
+            "escalation_on_stuck_orders_severe": escalation_on_stuck_orders_severe,
+            "escalation_on_errors_spike": escalation_on_errors_spike,
+            "escalation_on_unanswered_chats_severe": escalation_on_unanswered_chats_severe,
+        }.items():
+            if value is not None:
+                setattr(settings, attr, bool(value))
+
+        if escalation_stuck_orders_min is not None:
+            settings.escalation_stuck_orders_min = clamp_int(escalation_stuck_orders_min, min_value=0, max_value=999)
+        if escalation_errors_min is not None:
+            settings.escalation_errors_min = clamp_int(escalation_errors_min, min_value=0, max_value=999)
+        if escalation_unanswered_chats_min is not None:
+            settings.escalation_unanswered_chats_min = clamp_int(escalation_unanswered_chats_min, min_value=0, max_value=999)
+        if escalation_unanswered_threshold_hours is not None:
+            settings.escalation_unanswered_threshold_hours = clamp_int(escalation_unanswered_threshold_hours, min_value=1, max_value=168)
+
+        await session.commit()
+        await session.refresh(settings)
+        return settings

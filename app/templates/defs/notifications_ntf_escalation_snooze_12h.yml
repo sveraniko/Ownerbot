@@ -1,0 +1,10 @@
+template_id: NTF_ESCALATION_SNOOZE_12H
+category: notifications
+title: Snooze escalation 12h
+button_text: Пауза 12ч
+kind: ACTION
+tool_name: ntf_escalation_snooze
+order: 53
+default_payload:
+  hours: 12
+inputs: []

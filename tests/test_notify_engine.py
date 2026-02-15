@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 from app.notify.engine import (
     extract_fx_last_apply,
@@ -14,6 +15,9 @@ from app.notify.engine import (
     should_send_ops_alert,
     should_send_weekly,
     alert_triggered,
+    build_critical_snapshot,
+    make_critical_event_key,
+    should_send_escalation,
 )
 
 
@@ -221,3 +225,74 @@ def test_should_force_heartbeat() -> None:
     assert should_force_heartbeat(now, None, 7) is True
     assert should_force_heartbeat(now, datetime(2025, 1, 1, tzinfo=timezone.utc), 7) is True
     assert should_force_heartbeat(now, datetime(2025, 1, 5, tzinfo=timezone.utc), 7) is False
+
+
+def test_build_critical_snapshot_thresholds_and_toggles() -> None:
+    settings = SimpleNamespace(
+        escalation_on_fx_failed=True,
+        escalation_on_out_of_stock=True,
+        escalation_on_stuck_orders_severe=True,
+        escalation_on_errors_spike=True,
+        escalation_on_unanswered_chats_severe=False,
+        escalation_stuck_orders_min=3,
+        escalation_errors_min=5,
+        escalation_unanswered_chats_min=5,
+        escalation_unanswered_threshold_hours=6,
+    )
+    snapshot = build_critical_snapshot(
+        fx_status_payload={"last_apply": {"at": "2025-01-02T10:00:00+00:00", "result": "failed"}},
+        ops_snapshot={
+            "inventory": {"out_of_stock": 2, "top_out": [{"product_id": "p1"}]},
+            "stuck_orders": {"count": 3, "top": [{"order_id": "o1"}]},
+            "errors": {"count": 5, "top": [{"id": "e1"}]},
+            "unanswered_chats": {"count": 10, "threshold_hours": 2, "top": [{"thread_id": "t1"}]},
+        },
+        notify_settings=settings,
+    )
+    assert snapshot["fx_failed"] is True
+    assert snapshot["out_of_stock"] == 2
+    assert snapshot["stuck_orders"] == 3
+    assert snapshot["errors"] == 5
+    assert snapshot["unanswered_chats"] == 0
+
+
+def test_make_critical_event_key_stable() -> None:
+    snapshot = {
+        "fx_failed": True,
+        "out_of_stock": 1,
+        "stuck_orders": 3,
+        "errors": 6,
+        "unanswered_chats": 0,
+        "reasons": ["fx_failed", "errors=6"],
+        "top": {"errors": ["e1", "e2"]},
+    }
+    assert make_critical_event_key(snapshot) == make_critical_event_key(dict(snapshot))
+
+
+def test_should_send_escalation_rules() -> None:
+    now = datetime(2025, 1, 2, 12, 0, tzinfo=timezone.utc)
+    cfg = {"stage1_after_minutes": 120, "repeat_every_minutes": 360, "max_repeats": 3}
+    state = {
+        "last_event_key": "k1",
+        "first_seen_at": datetime(2025, 1, 2, 9, 0, tzinfo=timezone.utc),
+        "last_sent_at": None,
+        "repeat_count": 0,
+        "last_ack_key": None,
+        "snoozed_until": None,
+    }
+    ok, stage, _ = should_send_escalation(now, "k1", state, cfg)
+    assert ok is True and stage == 1
+
+    state["last_sent_at"] = datetime(2025, 1, 2, 11, 0, tzinfo=timezone.utc)
+    state["repeat_count"] = 1
+    ok, _, reason = should_send_escalation(now, "k1", state, cfg)
+    assert ok is False and reason == "repeat_cooldown"
+
+    state["last_ack_key"] = "k1"
+    ok, _, reason = should_send_escalation(now, "k1", state, cfg)
+    assert ok is False and reason == "acked"
+
+    state["last_ack_key"] = None
+    state["snoozed_until"] = datetime(2025, 1, 2, 13, 0, tzinfo=timezone.utc)
+    ok, _, reason = should_send_escalation(now, "k1", state, cfg)
+    assert ok is False and reason == "snoozed"

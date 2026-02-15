@@ -559,3 +559,129 @@ async def test_quiet_digest_triggered_sends_and_updates_last_sent(monkeypatch):
         row = await session.get(OwnerNotifySettings, 22)
         assert row.digest_last_attempt_at is not None
         assert row.digest_last_sent_at is not None
+
+
+@pytest.mark.asyncio
+async def test_escalation_new_incident_sets_first_seen_without_sending(monkeypatch):
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with async_session() as session:
+        session.add(OwnerNotifySettings(owner_id=31, escalation_enabled=True, digest_enabled=False))
+        await session.commit()
+
+    @asynccontextmanager
+    async def fake_scope():
+        async with async_session() as s:
+            yield s
+
+    bot = SimpleNamespace(send_message=AsyncMock(), send_photo=AsyncMock(), send_document=AsyncMock())
+    worker = NotifyWorker(bot)
+    monkeypatch.setattr("app.core.tasks.notify_worker.session_scope", fake_scope)
+    monkeypatch.setattr("app.core.tasks.notify_worker.get_redis", AsyncMock(side_effect=lambda: FakeRedis(lock=True)))
+    monkeypatch.setattr("app.core.tasks.notify_worker.get_settings", lambda: SimpleNamespace(owner_ids=[31], upstream_mode="DEMO"))
+    monkeypatch.setattr("app.core.tasks.notify_worker.build_ops_snapshot", AsyncMock(return_value={"warnings": [], "inventory": {"out_of_stock": 1, "top_out": []}, "stuck_orders": {"count": 0, "top": []}, "errors": {"count": 0, "top": []}, "unanswered_chats": {"count": 0, "top": [], "threshold_hours": 2}}))
+
+    await worker.tick()
+    assert bot.send_message.await_count == 0
+    async with async_session() as session:
+        row = await session.get(OwnerNotifySettings, 31)
+        assert row.escalation_first_seen_at is not None
+        assert row.escalation_repeat_count == 0
+
+
+@pytest.mark.asyncio
+async def test_escalation_send_and_limits(monkeypatch):
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    first_seen = datetime.now(timezone.utc) - timedelta(hours=4)
+    async with async_session() as session:
+        session.add(OwnerNotifySettings(owner_id=32, escalation_enabled=True, escalation_last_event_key="k", escalation_first_seen_at=first_seen, escalation_repeat_every_minutes=360, escalation_stage1_after_minutes=120, escalation_max_repeats=1, escalation_repeat_count=0, digest_enabled=False))
+        await session.commit()
+
+    @asynccontextmanager
+    async def fake_scope():
+        async with async_session() as s:
+            yield s
+
+    bot = SimpleNamespace(send_message=AsyncMock(), send_photo=AsyncMock(), send_document=AsyncMock())
+    worker = NotifyWorker(bot)
+    monkeypatch.setattr("app.core.tasks.notify_worker.session_scope", fake_scope)
+    monkeypatch.setattr("app.core.tasks.notify_worker.get_redis", AsyncMock(side_effect=lambda: FakeRedis(lock=True)))
+    monkeypatch.setattr("app.core.tasks.notify_worker.get_settings", lambda: SimpleNamespace(owner_ids=[32], upstream_mode="DEMO"))
+    monkeypatch.setattr("app.core.tasks.notify_worker.make_critical_event_key", lambda _: "k")
+    monkeypatch.setattr("app.core.tasks.notify_worker.build_ops_snapshot", AsyncMock(return_value={"warnings": [], "inventory": {"out_of_stock": 1, "top_out": []}, "stuck_orders": {"count": 0, "top": []}, "errors": {"count": 0, "top": []}, "unanswered_chats": {"count": 0, "top": [], "threshold_hours": 2}}))
+
+    await worker.tick()
+    await worker.tick()
+    assert bot.send_message.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_escalation_ack_and_snooze_stop(monkeypatch):
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with async_session() as session:
+        session.add(OwnerNotifySettings(owner_id=33, escalation_enabled=True, escalation_last_event_key="k", escalation_last_ack_key="k", escalation_first_seen_at=datetime.now(timezone.utc) - timedelta(hours=5), digest_enabled=False))
+        await session.commit()
+
+    @asynccontextmanager
+    async def fake_scope():
+        async with async_session() as s:
+            yield s
+
+    bot = SimpleNamespace(send_message=AsyncMock(), send_photo=AsyncMock(), send_document=AsyncMock())
+    worker = NotifyWorker(bot)
+    monkeypatch.setattr("app.core.tasks.notify_worker.session_scope", fake_scope)
+    monkeypatch.setattr("app.core.tasks.notify_worker.get_redis", AsyncMock(side_effect=lambda: FakeRedis(lock=True)))
+    monkeypatch.setattr("app.core.tasks.notify_worker.get_settings", lambda: SimpleNamespace(owner_ids=[33], upstream_mode="DEMO"))
+    monkeypatch.setattr("app.core.tasks.notify_worker.make_critical_event_key", lambda _: "k")
+    monkeypatch.setattr("app.core.tasks.notify_worker.build_ops_snapshot", AsyncMock(return_value={"warnings": [], "inventory": {"out_of_stock": 1, "top_out": []}, "stuck_orders": {"count": 0, "top": []}, "errors": {"count": 0, "top": []}, "unanswered_chats": {"count": 0, "top": [], "threshold_hours": 2}}))
+
+    await worker.tick()
+    assert bot.send_message.await_count == 0
+
+    async with async_session() as session:
+        row = await session.get(OwnerNotifySettings, 33)
+        row.escalation_last_ack_key = None
+        row.escalation_snoozed_until = datetime.now(timezone.utc) + timedelta(hours=2)
+        await session.commit()
+
+    await worker.tick()
+    assert bot.send_message.await_count == 0
+
+
+@pytest.mark.asyncio
+async def test_escalation_send_failure_keeps_state(monkeypatch):
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with async_session() as session:
+        session.add(OwnerNotifySettings(owner_id=34, escalation_enabled=True, escalation_last_event_key="k", escalation_first_seen_at=datetime.now(timezone.utc) - timedelta(hours=5), digest_enabled=False))
+        await session.commit()
+
+    @asynccontextmanager
+    async def fake_scope():
+        async with async_session() as s:
+            yield s
+
+    bot = SimpleNamespace(send_message=AsyncMock(side_effect=RuntimeError("boom")), send_photo=AsyncMock(), send_document=AsyncMock())
+    worker = NotifyWorker(bot)
+    monkeypatch.setattr("app.core.tasks.notify_worker.session_scope", fake_scope)
+    monkeypatch.setattr("app.core.tasks.notify_worker.get_redis", AsyncMock(side_effect=lambda: FakeRedis(lock=True)))
+    monkeypatch.setattr("app.core.tasks.notify_worker.get_settings", lambda: SimpleNamespace(owner_ids=[34], upstream_mode="DEMO"))
+    monkeypatch.setattr("app.core.tasks.notify_worker.make_critical_event_key", lambda _: "k")
+    monkeypatch.setattr("app.core.tasks.notify_worker.build_ops_snapshot", AsyncMock(return_value={"warnings": [], "inventory": {"out_of_stock": 1, "top_out": []}, "stuck_orders": {"count": 0, "top": []}, "errors": {"count": 0, "top": []}, "unanswered_chats": {"count": 0, "top": [], "threshold_hours": 2}}))
+
+    await worker.tick()
+    async with async_session() as session:
+        row = await session.get(OwnerNotifySettings, 34)
+        assert row.escalation_last_sent_at is None
+        assert row.escalation_repeat_count == 0

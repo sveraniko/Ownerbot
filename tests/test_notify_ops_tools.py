@@ -4,7 +4,15 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.tools.impl import ntf_ops_alerts_subscribe, ntf_ops_alerts_unsubscribe, ntf_status
+from app.tools.impl import (
+    ntf_ops_alerts_subscribe,
+    ntf_ops_alerts_unsubscribe,
+    ntf_status,
+    ntf_escalation_enable,
+    ntf_escalation_disable,
+    ntf_escalation_ack,
+    ntf_escalation_snooze,
+)
 from app.storage.models import Base, OwnerNotifySettings
 
 
@@ -45,3 +53,32 @@ async def test_ntf_status_contains_ops_alerts_fields() -> None:
         assert res.status == "ok"
         assert res.data["ops_alerts_enabled"] is True
         assert res.data["ops_alerts_cooldown_hours"] == 8
+
+
+@pytest.mark.asyncio
+async def test_escalation_tools_and_status() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with async_session() as session:
+        actor = SimpleNamespace(owner_user_id=210)
+        await ntf_escalation_enable.handle(ntf_escalation_enable.Payload(), "cid1", session, actor=actor)
+        row = await session.get(OwnerNotifySettings, 210)
+        assert row is not None and row.escalation_enabled is True
+
+        row.escalation_last_event_key = "ev-1"
+        await session.commit()
+        ack_res = await ntf_escalation_ack.handle(ntf_escalation_ack.Payload(), "cid2", session, actor=actor)
+        assert ack_res.status == "ok"
+
+        snooze_res = await ntf_escalation_snooze.handle(ntf_escalation_snooze.Payload(hours=12), "cid3", session, actor=actor)
+        assert snooze_res.status == "ok"
+
+        status_res = await ntf_status.handle(ntf_status.Payload(), "cid4", session, actor=actor)
+        assert status_res.status == "ok"
+        assert status_res.data["escalation_enabled"] is True
+
+        off_res = await ntf_escalation_disable.handle(ntf_escalation_disable.Payload(), "cid5", session, actor=actor)
+        assert off_res.status == "ok"

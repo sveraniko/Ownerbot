@@ -34,6 +34,9 @@ from app.notify import (
     quiet_digest_triggered,
     alert_triggered,
     build_ops_snapshot,
+    build_critical_snapshot,
+    make_critical_event_key,
+    should_send_escalation,
 )
 from app.tools.impl import kpi_compare, sis_fx_status
 
@@ -86,6 +89,7 @@ class NotifyWorker:
                     notify_settings.fx_delta_enabled,
                     notify_settings.fx_apply_events_enabled,
                     notify_settings.digest_enabled and notify_settings.digest_include_fx,
+                    bool(getattr(notify_settings, "escalation_enabled", False)) and bool(getattr(notify_settings, "escalation_on_fx_failed", True)),
                 )
             )
             if needs_fx_status:
@@ -102,7 +106,14 @@ class NotifyWorker:
                 await self._maybe_send_fx_apply_event(owner_id, notify_settings, session, fx_status_response)
 
             digest_include_ops = bool(getattr(notify_settings, "digest_include_ops", True))
-            if notify_settings.ops_alerts_enabled or (notify_settings.digest_enabled and digest_include_ops):
+            needs_ops_snapshot = any(
+                (
+                    notify_settings.ops_alerts_enabled,
+                    notify_settings.digest_enabled and digest_include_ops,
+                    bool(getattr(notify_settings, "escalation_enabled", False)),
+                )
+            )
+            if needs_ops_snapshot:
                 ops_snapshot = await build_ops_snapshot(
                     session,
                     correlation_id=f"notify-ops-{owner_id}",
@@ -114,6 +125,8 @@ class NotifyWorker:
 
             if notify_settings.digest_enabled:
                 await self._maybe_send_digest(owner_id, notify_settings, session, ops_snapshot=ops_snapshot, fx_status_response=fx_status_response)
+
+            await self._maybe_send_escalation(owner_id, notify_settings, session, ops_snapshot=ops_snapshot, fx_status_response=fx_status_response)
 
             if notify_settings.weekly_enabled:
                 await self._maybe_send_weekly(owner_id, notify_settings, session)
@@ -371,6 +384,96 @@ class NotifyWorker:
             error_text = str(last_apply.get("error") or "unknown_error")[:200]
             lines.append(f"❗ {error_text}")
         return "\n".join(lines)
+
+
+
+    async def _maybe_send_escalation(self, owner_id: int, notify_settings, session, ops_snapshot, fx_status_response) -> None:
+        if not bool(getattr(notify_settings, "escalation_enabled", False)):
+            return
+
+        now_utc = datetime.now(timezone.utc)
+        snoozed_until = getattr(notify_settings, "escalation_snoozed_until", None)
+        if isinstance(snoozed_until, datetime) and snoozed_until.tzinfo is None:
+            snoozed_until = snoozed_until.replace(tzinfo=timezone.utc)
+        if isinstance(snoozed_until, datetime) and now_utc < snoozed_until:
+            return
+
+        fx_payload = fx_status_response.data if fx_status_response is not None and getattr(fx_status_response, "status", None) == "ok" else None
+        snapshot = build_critical_snapshot(fx_payload, ops_snapshot, notify_settings)
+        reasons = list(snapshot.get("reasons") or [])
+        if not reasons:
+            notify_settings.escalation_last_event_key = None
+            notify_settings.escalation_first_seen_at = None
+            notify_settings.escalation_repeat_count = 0
+            await session.commit()
+            return
+
+        event_key = make_critical_event_key(snapshot)
+        if not event_key:
+            return
+
+        if event_key != getattr(notify_settings, "escalation_last_event_key", None):
+            notify_settings.escalation_last_event_key = event_key
+            notify_settings.escalation_first_seen_at = now_utc
+            notify_settings.escalation_repeat_count = 0
+            await session.commit()
+            return
+
+        should_send, stage, reason = should_send_escalation(
+            now_utc,
+            event_key,
+            {
+                "last_event_key": notify_settings.escalation_last_event_key,
+                "first_seen_at": notify_settings.escalation_first_seen_at,
+                "last_sent_at": notify_settings.escalation_last_sent_at,
+                "repeat_count": int(getattr(notify_settings, "escalation_repeat_count", 0) or 0),
+                "last_ack_key": notify_settings.escalation_last_ack_key,
+                "snoozed_until": notify_settings.escalation_snoozed_until,
+            },
+            {
+                "stage1_after_minutes": int(getattr(notify_settings, "escalation_stage1_after_minutes", 120) or 120),
+                "repeat_every_minutes": int(getattr(notify_settings, "escalation_repeat_every_minutes", 360) or 360),
+                "max_repeats": int(getattr(notify_settings, "escalation_max_repeats", 3) or 3),
+            },
+        )
+        if not should_send:
+            del reason
+            return
+
+        message = self._format_escalation_message(snapshot, stage)
+        sent = await self._safe_send_message(owner_id, message)
+        if not sent:
+            return
+
+        notify_settings.escalation_last_sent_at = now_utc
+        notify_settings.escalation_repeat_count = int(getattr(notify_settings, "escalation_repeat_count", 0) or 0) + 1
+        await session.commit()
+        await write_audit_event(
+            "notify_escalation_sent",
+            {
+                "owner_id": owner_id,
+                "stage": stage,
+                "repeat_count": int(notify_settings.escalation_repeat_count),
+                "reasons": reasons,
+                "correlation_id": f"notify-escalation-{owner_id}",
+            },
+        )
+
+    @staticmethod
+    def _format_escalation_message(snapshot: dict[str, object], stage: int) -> str:
+        reasons = [str(item) for item in (snapshot.get("reasons") or [])[:8]]
+        reasons_block = "\n".join(f"- {r}" for r in reasons) if reasons else "- unknown"
+        return (
+            f"🚨 CRITICAL persists (stage {stage})\n"
+            f"Reasons:\n{reasons_block}\n"
+            f"Summary: out_of_stock={int(snapshot.get('out_of_stock') or 0)}, "
+            f"stuck_orders={int(snapshot.get('stuck_orders') or 0)}, "
+            f"errors={int(snapshot.get('errors') or 0)}, "
+            f"unanswered={int(snapshot.get('unanswered_chats') or 0)}, "
+            f"fx_failed={'Yes' if snapshot.get('fx_failed') else 'No'}\n"
+            f"Commands: 'принято' (ACK) | 'пауза 12ч' (Snooze)"
+        )
+
 
     async def _maybe_send_digest(self, owner_id: int, notify_settings, session, ops_snapshot: dict[str, object] | None = None, fx_status_response=None) -> None:
         now_utc = datetime.now(timezone.utc)
