@@ -20,13 +20,17 @@ from app.notify import (
     extract_fx_last_apply,
     extract_fx_rate_and_schedule,
     make_fx_apply_event_key,
+    make_ops_event_key,
     normalize_digest_format,
     render_revenue_trend_png,
     render_weekly_pdf,
     should_send_digest,
+    should_send_ops_alert,
     should_send_fx_apply_event,
     should_send_fx_delta,
     should_send_weekly,
+    alert_triggered,
+    build_ops_snapshot,
 )
 from app.tools.impl import sis_fx_status
 
@@ -72,6 +76,7 @@ class NotifyWorker:
         async with session_scope() as session:
             notify_settings = await NotificationSettingsService.get_or_create(session, owner_id)
             fx_status_response = None
+            ops_snapshot = None
 
             needs_fx_status = any(
                 (
@@ -93,8 +98,19 @@ class NotifyWorker:
             if notify_settings.fx_apply_events_enabled:
                 await self._maybe_send_fx_apply_event(owner_id, notify_settings, session, fx_status_response)
 
+            digest_include_ops = bool(getattr(notify_settings, "digest_include_ops", True))
+            if notify_settings.ops_alerts_enabled or (notify_settings.digest_enabled and digest_include_ops):
+                ops_snapshot = await build_ops_snapshot(
+                    session,
+                    correlation_id=f"notify-ops-{owner_id}",
+                    rules=self._ops_rules_from_settings(notify_settings),
+                )
+
+            if notify_settings.ops_alerts_enabled and ops_snapshot is not None:
+                await self._maybe_send_ops_alert(owner_id, notify_settings, session, ops_snapshot)
+
             if notify_settings.digest_enabled:
-                await self._maybe_send_digest(owner_id, notify_settings, session)
+                await self._maybe_send_digest(owner_id, notify_settings, session, ops_snapshot=ops_snapshot)
 
             if notify_settings.weekly_enabled:
                 await self._maybe_send_weekly(owner_id, notify_settings, session)
@@ -205,6 +221,126 @@ class NotifyWorker:
         await write_audit_event("notify_error", {"owner_id": owner_id, "message": f"fx_apply_parse:{warning}"[:200]})
 
     @staticmethod
+    def _ops_rules_from_settings(notify_settings) -> dict[str, object]:
+        return {
+            "ops_unanswered_enabled": bool(getattr(notify_settings, "ops_unanswered_enabled", True)),
+            "ops_unanswered_threshold_hours": int(getattr(notify_settings, "ops_unanswered_threshold_hours", 2)),
+            "ops_unanswered_min_count": int(getattr(notify_settings, "ops_unanswered_min_count", 1)),
+            "ops_stuck_orders_enabled": bool(getattr(notify_settings, "ops_stuck_orders_enabled", True)),
+            "ops_stuck_orders_min_count": int(getattr(notify_settings, "ops_stuck_orders_min_count", 1)),
+            "ops_stuck_orders_preset": str(getattr(notify_settings, "ops_stuck_orders_preset", "stuck")),
+            "ops_payment_issues_enabled": bool(getattr(notify_settings, "ops_payment_issues_enabled", True)),
+            "ops_payment_issues_min_count": int(getattr(notify_settings, "ops_payment_issues_min_count", 1)),
+            "ops_payment_issues_preset": str(getattr(notify_settings, "ops_payment_issues_preset", "payment_issues")),
+            "ops_errors_enabled": bool(getattr(notify_settings, "ops_errors_enabled", True)),
+            "ops_errors_window_hours": int(getattr(notify_settings, "ops_errors_window_hours", 24)),
+            "ops_errors_min_count": int(getattr(notify_settings, "ops_errors_min_count", 1)),
+            "ops_out_of_stock_enabled": bool(getattr(notify_settings, "ops_out_of_stock_enabled", True)),
+            "ops_out_of_stock_min_count": int(getattr(notify_settings, "ops_out_of_stock_min_count", 1)),
+            "ops_low_stock_enabled": bool(getattr(notify_settings, "ops_low_stock_enabled", True)),
+            "ops_low_stock_lte": int(getattr(notify_settings, "ops_low_stock_lte", 5)),
+            "ops_low_stock_min_count": int(getattr(notify_settings, "ops_low_stock_min_count", 3)),
+        }
+
+    async def _maybe_send_ops_alert(self, owner_id: int, notify_settings, session, ops_snapshot: dict[str, object]) -> None:
+        now = datetime.now(timezone.utc)
+        rules = self._ops_rules_from_settings(notify_settings)
+        warnings = list(ops_snapshot.get("warnings") or [])
+        if warnings:
+            await self._notify_ops_tool_warning_with_cooldown(notify_settings, owner_id, session, warnings)
+
+        triggered, reasons = alert_triggered(ops_snapshot, rules)
+        if not triggered:
+            return
+
+        event_key = make_ops_event_key(ops_snapshot, rules)
+        if not should_send_ops_alert(
+            now=now,
+            last_sent_at=notify_settings.ops_alerts_last_sent_at,
+            cooldown_hours=int(notify_settings.ops_alerts_cooldown_hours),
+            last_seen_key=notify_settings.ops_alerts_last_seen_key,
+            event_key=event_key,
+        ):
+            return
+
+        message = self._format_ops_alert_message(ops_snapshot, str(notify_settings.digest_tz or "Europe/Berlin"), reasons)
+        sent = await self._safe_send_message(owner_id, message)
+        if not sent:
+            return
+
+        notify_settings.ops_alerts_last_seen_key = event_key
+        notify_settings.ops_alerts_last_sent_at = now
+        await session.commit()
+        await write_audit_event(
+            "notify_ops_alert_sent",
+            {
+                "owner_id": owner_id,
+                "reasons": reasons,
+                "counts": {
+                    "unanswered_chats": int((ops_snapshot.get("unanswered_chats") or {}).get("count") or 0),
+                    "stuck_orders": int((ops_snapshot.get("stuck_orders") or {}).get("count") or 0),
+                    "payment_issues": int((ops_snapshot.get("payment_issues") or {}).get("count") or 0),
+                    "errors": int((ops_snapshot.get("errors") or {}).get("count") or 0),
+                    "out_of_stock": int((ops_snapshot.get("inventory") or {}).get("out_of_stock") or 0),
+                    "low_stock": int((ops_snapshot.get("inventory") or {}).get("low_stock") or 0),
+                },
+                "correlation_id": f"notify-ops-{owner_id}",
+            },
+        )
+
+    async def _notify_ops_tool_warning_with_cooldown(self, notify_settings, owner_id: int, session, warnings: list[str]) -> None:
+        now = datetime.now(timezone.utc)
+        last_notice = notify_settings.ops_alerts_last_error_notice_at
+        if isinstance(last_notice, datetime) and last_notice.tzinfo is None:
+            last_notice = last_notice.replace(tzinfo=timezone.utc)
+        if last_notice and now - last_notice < timedelta(hours=12):
+            return
+        notify_settings.ops_alerts_last_error_notice_at = now
+        await session.commit()
+        await write_audit_event(
+            "notify_ops_alert_tool_failed",
+            {"owner_id": owner_id, "warnings": [str(w)[:180] for w in warnings[:5]]},
+        )
+
+    @staticmethod
+    def _format_ops_alert_message(snapshot: dict[str, object], tz_name: str, reasons: list[str]) -> str:
+        now = datetime.now(timezone.utc)
+        try:
+            now_text = now.astimezone(ZoneInfo(tz_name)).strftime("%Y-%m-%d %H:%M:%S %Z")
+        except Exception:
+            now_text = now.isoformat()
+
+        unanswered = snapshot.get("unanswered_chats") or {}
+        stuck = snapshot.get("stuck_orders") or {}
+        payment = snapshot.get("payment_issues") or {}
+        errors = snapshot.get("errors") or {}
+        inventory = snapshot.get("inventory") or {}
+
+        lines = [
+            f"🚨 Ops alerts (TZ {tz_name}, {now_text})",
+            f"💬 Unanswered >{int(unanswered.get('threshold_hours') or 2)}h: {int(unanswered.get('count') or 0)}",
+            f"🧾 Stuck orders: {int(stuck.get('count') or 0)}",
+            f"💳 Payment issues: {int(payment.get('count') or 0)}",
+            f"⚠️ Errors({int(errors.get('window_hours') or 24)}h): {int(errors.get('count') or 0)}",
+            f"📦 Stock: out={int(inventory.get('out_of_stock') or 0)}, low={int(inventory.get('low_stock') or 0)}",
+        ]
+        top_lines: list[str] = []
+        for thread in (unanswered.get("top") or [])[:1]:
+            if isinstance(thread, dict):
+                top_lines.append(f"• chat {thread.get('thread_id')}")
+        for item in (stuck.get("top") or [])[:1]:
+            if isinstance(item, dict):
+                top_lines.append(f"• stuck {item.get('order_id')}")
+        for item in (payment.get("top") or [])[:1]:
+            if isinstance(item, dict):
+                top_lines.append(f"• pay {item.get('order_id')}")
+        if top_lines:
+            lines.append("Top: " + " | ".join([str(x)[:50] for x in top_lines[:3]]))
+        if reasons:
+            lines.append("Reasons: " + ", ".join(reasons[:5]))
+        return "\n".join(lines)
+
+    @staticmethod
     def _format_fx_apply_message(last_apply: dict[str, object], tz_name: str) -> str:
         result = str(last_apply.get("result") or "").upper()
         at = last_apply.get("at")
@@ -233,7 +369,7 @@ class NotifyWorker:
             lines.append(f"❗ {error_text}")
         return "\n".join(lines)
 
-    async def _maybe_send_digest(self, owner_id: int, notify_settings, session) -> None:
+    async def _maybe_send_digest(self, owner_id: int, notify_settings, session, ops_snapshot: dict[str, object] | None = None) -> None:
         now_utc = datetime.now(timezone.utc)
         try:
             tz = ZoneInfo(str(notify_settings.digest_tz))
@@ -244,7 +380,10 @@ class NotifyWorker:
         if not should_send_digest(now_local=now_local, last_sent_at=last_sent_local, digest_time_local=notify_settings.digest_time_local):
             return
 
-        bundle = await build_daily_digest(owner_id, session, correlation_id=f"notify-digest-{owner_id}")
+        if ops_snapshot is not None and ops_snapshot.get("warnings"):
+            await self._notify_ops_tool_warning_with_cooldown(notify_settings, owner_id, session, list(ops_snapshot.get("warnings") or []))
+
+        bundle = await build_daily_digest(owner_id, session, correlation_id=f"notify-digest-{owner_id}", ops_snapshot=ops_snapshot)
         digest_format = normalize_digest_format(notify_settings.digest_format)
 
         send_ok = await self._safe_send_message(owner_id, bundle.text)

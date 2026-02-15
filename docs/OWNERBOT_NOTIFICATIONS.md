@@ -37,3 +37,11 @@ OwnerBot notifications — owner-only подсистема уведомлени�
 - Дедупликация по ключу события + кулдаун (`fx_apply_events_cooldown_hours`, 1..168).
 - При ошибке парсинга `last_apply` уведомление об ошибке троттлится (не чаще 1 раза в 12ч).
 - При `UPSTREAM_MODE != DEMO` и отсутствии `last_apply` в `/fx/status` воркер тихо пропускает FX apply события (без спама).
+
+
+## Ops alerts
+- Owner-only operational alerts: unanswered chats, stuck orders, payment issues, recent errors, inventory risk.
+- Disabled by default (`ops_alerts_enabled=false`).
+- Alert is sent only when thresholds are triggered and both dedupe key + cooldown allow sending (`ops_alerts_cooldown_hours`, default 6h).
+- Tool failures are throttled (`ops_alerts_last_error_notice_at`, 12h) and audited via `notify_ops_alert_tool_failed` without spamming Telegram.
+- Safety: `ops_alerts_last_seen_key` / `ops_alerts_last_sent_at` are updated only after successful delivery.

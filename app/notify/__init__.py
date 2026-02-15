@@ -11,8 +11,12 @@ from app.notify.engine import (
     should_send_fx_delta,
     should_send_fx_apply_event,
     should_send_weekly,
+    make_ops_event_key,
+    should_send_ops_alert,
+    alert_triggered,
 )
 from app.notify.digest_builder import DigestBundle, build_daily_digest, build_weekly_digest
+from app.notify.ops import build_ops_snapshot
 from app.notify.renderers import render_revenue_trend_png, render_weekly_pdf
 from app.notify.service import NotificationSettingsService
 
@@ -29,9 +33,13 @@ __all__ = [
     "should_send_fx_delta",
     "should_send_fx_apply_event",
     "should_send_weekly",
+    "make_ops_event_key",
+    "should_send_ops_alert",
+    "alert_triggered",
     "DigestBundle",
     "build_daily_digest",
     "build_weekly_digest",
+    "build_ops_snapshot",
     "render_revenue_trend_png",
     "render_weekly_pdf",
     "NotificationSettingsService",

@@ -306,6 +306,8 @@
 * **NTF_DIGEST_FORMAT_SET** — Формат daily digest (`text|png|pdf`)
 * **NTF_WEEKLY_SUBSCRIBE** — Подписаться на weekly PDF (день/время/tz)
 * **NTF_WEEKLY_UNSUBSCRIBE** — Выключить weekly PDF
+* **NTF_OPS_ALERTS_SUBSCRIBE** — Включить ops alerts (пороги + cooldown + dedupe)
+* **NTF_OPS_ALERTS_UNSUBSCRIBE** — Выключить ops alerts
 
 ### Разовые уведомления
 

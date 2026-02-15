@@ -1,0 +1,19 @@
+template_id: NTF_OPS_ALERTS_SUBSCRIBE
+category: notifications
+title: Включить Ops alerts
+button_text: Ops alerts ON
+kind: ACTION
+tool_name: ntf_ops_alerts_subscribe
+order: 32
+default_payload:
+  cooldown_hours: 6
+  unanswered_threshold_hours: 2
+  unanswered_min_count: 1
+  stuck_min_count: 1
+  payment_min_count: 1
+  errors_window_hours: 24
+  errors_min_count: 1
+  low_stock_lte: 5
+  low_stock_min_count: 3
+  out_of_stock_min_count: 1
+inputs: []

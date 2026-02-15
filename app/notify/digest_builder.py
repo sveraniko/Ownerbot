@@ -26,35 +26,54 @@ class DigestBundle:
     warnings: list[str]
 
 
-async def build_daily_digest(owner_id: int, session, correlation_id: str) -> DigestBundle:
+async def build_daily_digest(owner_id: int, session, correlation_id: str, ops_snapshot: dict[str, object] | None = None) -> DigestBundle:
     warnings: list[str] = []
 
     kpi_res = await kpi_compare.handle(kpi_compare.Payload(preset="wow"), correlation_id=f"{correlation_id}-kpi", session=session)
     trend_res = await revenue_trend.handle(revenue_trend.Payload(days=14), correlation_id=f"{correlation_id}-trend", session=session)
-    chats_res = await chats_unanswered.handle(chats_unanswered.Payload(threshold_hours=2, limit=5), correlation_id=f"{correlation_id}-chat", session=session)
-    errors_res = await sys_last_errors.handle(sys_last_errors.Payload(limit=5), correlation_id=f"{correlation_id}-err", session=session)
+    chats_res = None
+    errors_res = None
+    orders_res = None
+    inventory_res = None
+    if ops_snapshot is None:
+        chats_res = await chats_unanswered.handle(chats_unanswered.Payload(threshold_hours=2, limit=5), correlation_id=f"{correlation_id}-chat", session=session)
+        errors_res = await sys_last_errors.handle(sys_last_errors.Payload(limit=5), correlation_id=f"{correlation_id}-err", session=session)
+        orders_res = await orders_search.handle(orders_search.OrdersSearchPayload(preset="stuck", limit=1), correlation_id=f"{correlation_id}-stuck", session=session)
+        inventory_res = await inventory_status.handle(inventory_status.Payload(section="all", limit=1), correlation_id=f"{correlation_id}-inv", session=session)
     fx_res = await sis_fx_status.handle(sis_fx_status.Payload(), correlation_id=f"{correlation_id}-fx", session=session)
 
-    for name, res in (("kpi_compare", kpi_res), ("revenue_trend", trend_res), ("chats_unanswered", chats_res), ("sys_last_errors", errors_res), ("sis_fx_status", fx_res)):
+    for name, res in (("kpi_compare", kpi_res), ("revenue_trend", trend_res), ("sis_fx_status", fx_res)):
         if res.status != "ok":
             warnings.append(f"{name}: unavailable")
+    if ops_snapshot is None:
+        for name, res in (("chats_unanswered", chats_res), ("sys_last_errors", errors_res), ("orders_search", orders_res), ("inventory_status", inventory_res)):
+            if res is not None and res.status != "ok":
+                warnings.append(f"{name}: unavailable")
+    else:
+        warnings.extend([str(w) for w in (ops_snapshot.get("warnings") or [])])
 
     stuck_count = 0
-    orders_res = await orders_search.handle(orders_search.OrdersSearchPayload(preset="stuck", limit=1), correlation_id=f"{correlation_id}-stuck", session=session)
-    if orders_res.status == "ok":
-        stuck_count = int(orders_res.data.get("count") or 0)
-    else:
-        warnings.append("orders_search(stuck): unavailable")
-
-    inventory_res = await inventory_status.handle(inventory_status.Payload(section="all", limit=1), correlation_id=f"{correlation_id}-inv", session=session)
     low_stock_count = 0
     out_of_stock_count = 0
-    if inventory_res.status == "ok":
-        counts = inventory_res.data.get("counts") or {}
-        low_stock_count = int(counts.get("low_stock") or 0)
-        out_of_stock_count = int(counts.get("out_of_stock") or 0)
+    unanswered_count = 0
+    errors_count = 0
+    if ops_snapshot is None:
+        if orders_res is not None and orders_res.status == "ok":
+            stuck_count = int(orders_res.data.get("count") or 0)
+        if inventory_res is not None and inventory_res.status == "ok":
+            counts = inventory_res.data.get("counts") or {}
+            low_stock_count = int(counts.get("low_stock") or 0)
+            out_of_stock_count = int(counts.get("out_of_stock") or 0)
+        if chats_res is not None and chats_res.status == "ok":
+            unanswered_count = int(chats_res.data.get("count") or 0)
+        if errors_res is not None and errors_res.status == "ok":
+            errors_count = int(errors_res.data.get("count") or 0)
     else:
-        warnings.append("inventory_status: unavailable")
+        unanswered_count = int((ops_snapshot.get("unanswered_chats") or {}).get("count") or 0)
+        stuck_count = int((ops_snapshot.get("stuck_orders") or {}).get("count") or 0)
+        errors_count = int((ops_snapshot.get("errors") or {}).get("count") or 0)
+        low_stock_count = int((ops_snapshot.get("inventory") or {}).get("low_stock") or 0)
+        out_of_stock_count = int((ops_snapshot.get("inventory") or {}).get("out_of_stock") or 0)
 
     kpi_summary: dict[str, object] = {}
     if kpi_res.status == "ok":
@@ -72,9 +91,9 @@ async def build_daily_digest(owner_id: int, session, correlation_id: str) -> Dig
     series = trend_res.data.get("series", []) if trend_res.status == "ok" else []
 
     ops_summary = {
-        "unanswered_chats_2h": int((chats_res.data if chats_res.status == "ok" else {}).get("count") or 0),
+        "unanswered_chats_2h": unanswered_count,
         "stuck_orders": stuck_count,
-        "last_errors_count": int((errors_res.data if errors_res.status == "ok" else {}).get("count") or 0),
+        "last_errors_count": errors_count,
         "low_stock": low_stock_count,
         "out_of_stock": out_of_stock_count,
     }

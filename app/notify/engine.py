@@ -213,3 +213,92 @@ def should_send_weekly(
     if last_sent_at_local is None:
         return True
     return now_local.isocalendar()[:2] != last_sent_at_local.isocalendar()[:2]
+
+
+def _extract_top_ids(items: list[dict[str, Any]], keys: tuple[str, ...], limit: int = 3) -> list[str]:
+    values: list[str] = []
+    for item in items[:limit]:
+        if not isinstance(item, dict):
+            continue
+        for key in keys:
+            value = item.get(key)
+            if value is None:
+                continue
+            text = str(value).strip()
+            if text:
+                values.append(text)
+                break
+    return values
+
+
+def make_ops_event_key(snapshot: dict[str, Any], rules: dict[str, Any]) -> str:
+    del rules
+    unanswered = snapshot.get("unanswered_chats") or {}
+    stuck = snapshot.get("stuck_orders") or {}
+    payment = snapshot.get("payment_issues") or {}
+    errors = snapshot.get("errors") or {}
+    inventory = snapshot.get("inventory") or {}
+
+    top_ids: list[str] = []
+    top_ids.extend(_extract_top_ids(unanswered.get("top") or [], ("thread_id", "customer_id")))
+    top_ids.extend(_extract_top_ids(stuck.get("top") or [], ("order_id",)))
+    top_ids.extend(_extract_top_ids(payment.get("top") or [], ("order_id",)))
+    top_ids.extend(_extract_top_ids(errors.get("top") or [], ("id", "correlation_id")))
+    top_ids.extend(_extract_top_ids(inventory.get("top_out") or [], ("product_id",)))
+    top_ids.extend(_extract_top_ids(inventory.get("top_low") or [], ("product_id",)))
+
+    now = datetime.now(timezone.utc)
+    bucket = now.strftime("%Y%m%d%H")
+    key = (
+        f"u:{int(unanswered.get('count') or 0)}|"
+        f"s:{int(stuck.get('count') or 0)}|"
+        f"p:{int(payment.get('count') or 0)}|"
+        f"e:{int(errors.get('count') or 0)}|"
+        f"oos:{int(inventory.get('out_of_stock') or 0)}|"
+        f"low:{int(inventory.get('low_stock') or 0)}|"
+        f"top:{','.join(top_ids[:8])}|"
+        f"b:{bucket}"
+    )
+    return key[:300]
+
+
+def should_send_ops_alert(
+    now: datetime,
+    last_sent_at: datetime | None,
+    cooldown_hours: int,
+    last_seen_key: str | None,
+    event_key: str,
+) -> bool:
+    if not event_key:
+        return False
+    if last_seen_key and last_seen_key == event_key:
+        return False
+    if cooldown_hours < 1:
+        return False
+    if last_sent_at is not None and (now - last_sent_at) < timedelta(hours=cooldown_hours):
+        return False
+    return True
+
+
+def alert_triggered(snapshot: dict[str, Any], rules: dict[str, Any]) -> tuple[bool, list[str]]:
+    reasons: list[str] = []
+    unanswered = snapshot.get("unanswered_chats") or {}
+    stuck = snapshot.get("stuck_orders") or {}
+    payment = snapshot.get("payment_issues") or {}
+    errors = snapshot.get("errors") or {}
+    inventory = snapshot.get("inventory") or {}
+
+    if rules.get("ops_unanswered_enabled", True) and int(unanswered.get("count") or 0) >= int(rules.get("ops_unanswered_min_count", 1)):
+        reasons.append(f"unanswered>{int(rules.get('ops_unanswered_threshold_hours', 2))}h={int(unanswered.get('count') or 0)}")
+    if rules.get("ops_stuck_orders_enabled", True) and int(stuck.get("count") or 0) >= int(rules.get("ops_stuck_orders_min_count", 1)):
+        reasons.append(f"stuck={int(stuck.get('count') or 0)}")
+    if rules.get("ops_payment_issues_enabled", True) and int(payment.get("count") or 0) >= int(rules.get("ops_payment_issues_min_count", 1)):
+        reasons.append(f"payment_issues={int(payment.get('count') or 0)}")
+    if rules.get("ops_errors_enabled", True) and int(errors.get("count") or 0) >= int(rules.get("ops_errors_min_count", 1)):
+        reasons.append(f"errors({int(rules.get('ops_errors_window_hours', 24))}h)={int(errors.get('count') or 0)}")
+    if rules.get("ops_out_of_stock_enabled", True) and int(inventory.get("out_of_stock") or 0) >= int(rules.get("ops_out_of_stock_min_count", 1)):
+        reasons.append(f"out_of_stock={int(inventory.get('out_of_stock') or 0)}")
+    if rules.get("ops_low_stock_enabled", True) and int(inventory.get("low_stock") or 0) >= int(rules.get("ops_low_stock_min_count", 3)):
+        reasons.append(f"low_stock<={int(rules.get('ops_low_stock_lte', 5))}:{int(inventory.get('low_stock') or 0)}")
+
+    return (len(reasons) > 0), reasons

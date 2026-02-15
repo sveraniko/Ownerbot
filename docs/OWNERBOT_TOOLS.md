@@ -93,5 +93,7 @@
 - `ntf_weekly_unsubscribe` — выключить weekly digest.
 - `ntf_send_digest_now` — ручной тестовый запуск digest (debug).
 - `ntf_send_weekly_now` — ручной тестовый weekly (debug).
+- `ntf_ops_alerts_subscribe` — включить ops alerts (`cooldown_hours`, пороги unanswered/stuck/payment/errors/inventory).
+- `ntf_ops_alerts_unsubscribe` — выключить ops alerts.
 
 > Все `ntf_*` работают только в контексте owner actor (`OWNER_IDS`) и пишут состояние в `owner_notify_settings`.

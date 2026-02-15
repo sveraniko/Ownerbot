@@ -68,11 +68,26 @@ async def handle(payload: Payload, correlation_id: str, session, actor: ToolActo
         "weekly_time_local": settings.weekly_time_local,
         "weekly_tz": settings.weekly_tz,
         "next_weekly_at_local": next_weekly.isoformat(),
+        "ops_alerts_enabled": settings.ops_alerts_enabled,
+        "ops_alerts_cooldown_hours": settings.ops_alerts_cooldown_hours,
+        "ops_alerts_last_sent_at": settings.ops_alerts_last_sent_at.isoformat() if settings.ops_alerts_last_sent_at else None,
+        "ops_rules": {
+            "unanswered_threshold_hours": settings.ops_unanswered_threshold_hours,
+            "unanswered_min_count": settings.ops_unanswered_min_count,
+            "stuck_min_count": settings.ops_stuck_orders_min_count,
+            "payment_min_count": settings.ops_payment_issues_min_count,
+            "errors_window_hours": settings.ops_errors_window_hours,
+            "errors_min_count": settings.ops_errors_min_count,
+            "out_of_stock_min_count": settings.ops_out_of_stock_min_count,
+            "low_stock_lte": settings.ops_low_stock_lte,
+            "low_stock_min_count": settings.ops_low_stock_min_count,
+        },
         "message": (
             f"FX Δ: {'on' if settings.fx_delta_enabled else 'off'} ({float(settings.fx_delta_min_percent):.2f}%/{settings.fx_delta_cooldown_hours}ч)\n"
             f"FX apply: {'on' if settings.fx_apply_events_enabled else 'off'} (applied={settings.fx_apply_notify_applied}, noop={settings.fx_apply_notify_noop}, failed={settings.fx_apply_notify_failed}, cd={settings.fx_apply_events_cooldown_hours}ч)\n"
             f"Digest: {'on' if settings.digest_enabled else 'off'} ({settings.digest_time_local} {settings.digest_tz}, format={normalize_digest_format(settings.digest_format)})\n"
-            f"Weekly: {'on' if settings.weekly_enabled else 'off'} (dow={weekly_dow}, {settings.weekly_time_local} {settings.weekly_tz})"
+            f"Weekly: {'on' if settings.weekly_enabled else 'off'} (dow={weekly_dow}, {settings.weekly_time_local} {settings.weekly_tz})\n"
+            f"Ops alerts: {'on' if settings.ops_alerts_enabled else 'off'} (cd={settings.ops_alerts_cooldown_hours}ч, unanswered>{settings.ops_unanswered_threshold_hours}h, low<={settings.ops_low_stock_lte})"
         ),
     }
     return ToolResponse.ok(correlation_id=correlation_id, data=data, provenance=ToolProvenance(sources=["owner_notify_settings"]))
