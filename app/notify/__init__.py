@@ -20,6 +20,10 @@ from app.notify.engine import (
     make_ops_event_key,
     should_send_ops_alert,
     alert_triggered,
+    build_critical_snapshot,
+    make_critical_event_key,
+    is_escalation_snoozed,
+    should_send_escalation,
 )
 from app.notify.digest_builder import DigestBundle, build_daily_digest, build_weekly_digest
 from app.notify.ops import build_ops_snapshot
@@ -48,6 +52,10 @@ __all__ = [
     "make_ops_event_key",
     "should_send_ops_alert",
     "alert_triggered",
+    "build_critical_snapshot",
+    "make_critical_event_key",
+    "is_escalation_snoozed",
+    "should_send_escalation",
     "DigestBundle",
     "build_daily_digest",
     "build_weekly_digest",

@@ -1,0 +1,9 @@
+template_id: NTF_ESCALATION_OFF
+category: notifications
+title: Выключить escalation
+button_text: 🧯 Escalation OFF
+kind: ACTION
+tool_name: ntf_escalation_disable
+order: 51
+default_payload: {}
+inputs: []

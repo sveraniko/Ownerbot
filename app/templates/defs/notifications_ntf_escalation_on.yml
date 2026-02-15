@@ -1,0 +1,9 @@
+template_id: NTF_ESCALATION_ON
+category: notifications
+title: Включить escalation
+button_text: 🧯 Escalation ON
+kind: ACTION
+tool_name: ntf_escalation_enable
+order: 50
+default_payload: {}
+inputs: []

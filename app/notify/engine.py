@@ -338,6 +338,147 @@ def alert_triggered(snapshot: dict[str, Any], rules: dict[str, Any]) -> tuple[bo
     return (len(reasons) > 0), reasons
 
 
+
+
+def build_critical_snapshot(
+    fx_status_payload: dict[str, Any] | None,
+    ops_snapshot: dict[str, Any] | None,
+    notify_settings: Any,
+) -> dict[str, Any]:
+    reasons: list[str] = []
+    top: dict[str, list[str]] = {}
+
+    fx_failed = False
+    if bool(getattr(notify_settings, "escalation_on_fx_failed", True)) and isinstance(fx_status_payload, dict):
+        last_apply, _ = extract_fx_last_apply(fx_status_payload)
+        fx_failed = bool(last_apply and str(last_apply.get("result") or "") == "failed")
+        if fx_failed:
+            reasons.append("fx_failed")
+
+    out_of_stock = 0
+    stuck_orders = 0
+    errors = 0
+    unanswered_chats = 0
+
+    if isinstance(ops_snapshot, dict):
+        inventory = ops_snapshot.get("inventory") or {}
+        stuck = ops_snapshot.get("stuck_orders") or {}
+        errors_obj = ops_snapshot.get("errors") or {}
+        unanswered = ops_snapshot.get("unanswered_chats") or {}
+
+        out_of_stock_raw = int(inventory.get("out_of_stock") or 0)
+        if bool(getattr(notify_settings, "escalation_on_out_of_stock", True)) and out_of_stock_raw > 0:
+            out_of_stock = out_of_stock_raw
+            reasons.append(f"out_of_stock={out_of_stock}")
+            top["out_of_stock"] = _extract_top_ids(inventory.get("top_out") or [], ("product_id",), limit=3)
+
+        stuck_raw = int(stuck.get("count") or 0)
+        stuck_min = int(getattr(notify_settings, "escalation_stuck_orders_min", 3) or 3)
+        if bool(getattr(notify_settings, "escalation_on_stuck_orders_severe", True)) and stuck_raw >= stuck_min:
+            stuck_orders = stuck_raw
+            reasons.append(f"stuck_orders={stuck_orders}")
+            top["stuck_orders"] = _extract_top_ids(stuck.get("top") or [], ("order_id",), limit=3)
+
+        errors_raw = int(errors_obj.get("count") or 0)
+        errors_min = int(getattr(notify_settings, "escalation_errors_min", 5) or 5)
+        if bool(getattr(notify_settings, "escalation_on_errors_spike", True)) and errors_raw >= errors_min:
+            errors = errors_raw
+            reasons.append(f"errors={errors}")
+            top["errors"] = _extract_top_ids(errors_obj.get("top") or [], ("id", "correlation_id"), limit=3)
+
+        unanswered_raw = int(unanswered.get("count") or 0)
+        unanswered_min = int(getattr(notify_settings, "escalation_unanswered_chats_min", 5) or 5)
+        threshold_hours = int(getattr(notify_settings, "escalation_unanswered_threshold_hours", 6) or 6)
+        snapshot_threshold_hours = int(unanswered.get("threshold_hours") or 0)
+        threshold_match = snapshot_threshold_hours >= threshold_hours
+        if (
+            bool(getattr(notify_settings, "escalation_on_unanswered_chats_severe", False))
+            and threshold_match
+            and unanswered_raw >= unanswered_min
+        ):
+            unanswered_chats = unanswered_raw
+            reasons.append(f"unanswered_chats={unanswered_chats}")
+            top["unanswered_chats"] = _extract_top_ids(unanswered.get("top") or [], ("thread_id", "customer_id"), limit=3)
+
+    return {
+        "fx_failed": fx_failed,
+        "out_of_stock": out_of_stock,
+        "stuck_orders": stuck_orders,
+        "errors": errors,
+        "unanswered_chats": unanswered_chats,
+        "reasons": reasons,
+        "top": {k: v for k, v in top.items() if v},
+    }
+
+
+def make_critical_event_key(snapshot: dict[str, Any]) -> str:
+    if not snapshot or not list(snapshot.get("reasons") or []):
+        return ""
+    top = snapshot.get("top") or {}
+    parts = [
+        f"fx:{1 if snapshot.get('fx_failed') else 0}",
+        f"oos:{int(snapshot.get('out_of_stock') or 0)}",
+        f"stuck:{int(snapshot.get('stuck_orders') or 0)}",
+        f"err:{int(snapshot.get('errors') or 0)}",
+        f"chat:{int(snapshot.get('unanswered_chats') or 0)}",
+        f"reasons:{','.join(sorted(str(x) for x in (snapshot.get('reasons') or [])[:8]))}",
+    ]
+    for key in ("out_of_stock", "stuck_orders", "errors", "unanswered_chats"):
+        ids = [str(x) for x in (top.get(key) or [])[:3]]
+        if ids:
+            parts.append(f"{key}_top:{','.join(ids)}")
+    return "|".join(parts)[:300]
+
+
+def is_escalation_snoozed(now_utc: datetime, snoozed_until: datetime | None) -> bool:
+    if snoozed_until is None:
+        return False
+    until = snoozed_until if snoozed_until.tzinfo is not None else snoozed_until.replace(tzinfo=timezone.utc)
+    return now_utc < until
+
+
+def should_send_escalation(
+    now_utc: datetime,
+    event_key: str,
+    state: dict[str, Any],
+    cfg: dict[str, int],
+) -> tuple[bool, int, str]:
+    if is_escalation_snoozed(now_utc, state.get("snoozed_until")):
+        return False, 0, "snoozed"
+    if not event_key:
+        return False, 0, "no_event"
+    if state.get("last_ack_key") == event_key:
+        return False, 0, "acked"
+
+    stage1_after_minutes = clamp_int(int(cfg.get("stage1_after_minutes", 120) or 120), min_value=30, max_value=1440)
+    repeat_every_minutes = clamp_int(int(cfg.get("repeat_every_minutes", 360) or 360), min_value=60, max_value=2880)
+    max_repeats = clamp_int(int(cfg.get("max_repeats", 3) or 3), min_value=0, max_value=10)
+
+    last_event_key = state.get("last_event_key")
+    if last_event_key != event_key:
+        return False, 0, "new_event_waiting_first_seen"
+
+    first_seen_at = state.get("first_seen_at")
+    if not isinstance(first_seen_at, datetime):
+        return False, 0, "missing_first_seen"
+    if first_seen_at.tzinfo is None:
+        first_seen_at = first_seen_at.replace(tzinfo=timezone.utc)
+    if now_utc - first_seen_at < timedelta(minutes=stage1_after_minutes):
+        return False, 0, "stage1_delay"
+
+    repeat_count = int(state.get("repeat_count") or 0)
+    if repeat_count >= max_repeats:
+        return False, 0, "max_repeats_reached"
+
+    last_sent_at = state.get("last_sent_at")
+    if isinstance(last_sent_at, datetime):
+        if last_sent_at.tzinfo is None:
+            last_sent_at = last_sent_at.replace(tzinfo=timezone.utc)
+        if now_utc - last_sent_at < timedelta(minutes=repeat_every_minutes):
+            return False, 0, "repeat_cooldown"
+
+    return True, repeat_count + 1, "send"
+
 def quiet_digest_triggered(
     kpi_summary: dict[str, Any],
     ops_snapshot: dict[str, Any] | None,

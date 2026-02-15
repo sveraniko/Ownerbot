@@ -56,6 +56,11 @@ from app.tools.impl import (
     ntf_quiet_digest_on,
     ntf_quiet_digest_off,
     ntf_quiet_digest_rules_set,
+    ntf_escalation_enable,
+    ntf_escalation_disable,
+    ntf_escalation_ack,
+    ntf_escalation_snooze,
+    ntf_escalation_rules_set,
     biz_dashboard_daily,
     biz_dashboard_weekly,
     biz_dashboard_ops,
@@ -118,6 +123,11 @@ def build_registry() -> ToolRegistry:
     registry.register("ntf_quiet_digest_on", "1.0", ntf_quiet_digest_on.Payload, ntf_quiet_digest_on.handle)
     registry.register("ntf_quiet_digest_off", "1.0", ntf_quiet_digest_off.Payload, ntf_quiet_digest_off.handle)
     registry.register("ntf_quiet_digest_rules_set", "1.0", ntf_quiet_digest_rules_set.Payload, ntf_quiet_digest_rules_set.handle)
+    registry.register("ntf_escalation_enable", "1.0", ntf_escalation_enable.Payload, ntf_escalation_enable.handle)
+    registry.register("ntf_escalation_disable", "1.0", ntf_escalation_disable.Payload, ntf_escalation_disable.handle)
+    registry.register("ntf_escalation_ack", "1.0", ntf_escalation_ack.Payload, ntf_escalation_ack.handle)
+    registry.register("ntf_escalation_snooze", "1.0", ntf_escalation_snooze.Payload, ntf_escalation_snooze.handle)
+    registry.register("ntf_escalation_rules_set", "1.0", ntf_escalation_rules_set.Payload, ntf_escalation_rules_set.handle)
     registry.register("biz_dashboard_daily", "1.0", biz_dashboard_daily.Payload, biz_dashboard_daily.handle)
     registry.register("biz_dashboard_weekly", "1.0", biz_dashboard_weekly.Payload, biz_dashboard_weekly.handle)
     registry.register("biz_dashboard_ops", "1.0", biz_dashboard_ops.Payload, biz_dashboard_ops.handle)

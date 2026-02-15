@@ -74,6 +74,22 @@ def route_intent(text: str) -> IntentResult:
     if "обнови цены" in normalized or "пересчитай цены" in normalized or "fx пересчет" in normalized:
         return IntentResult(tool="sis_fx_reprice_auto", payload={"dry_run": True, "force": False, "refresh_snapshot": True})
 
+
+    if normalized in {"принято", "ack", "понял"}:
+        return IntentResult(tool="ntf_escalation_ack", payload={})
+
+    if "пауза 12" in normalized or "snooze 12" in normalized:
+        return IntentResult(tool="ntf_escalation_snooze", payload={"hours": 12})
+
+    if "пауза 24" in normalized or "snooze 24" in normalized:
+        return IntentResult(tool="ntf_escalation_snooze", payload={"hours": 24})
+
+    if "эскалацию включи" in normalized:
+        return IntentResult(tool="ntf_escalation_enable", payload={})
+
+    if "эскалацию выключи" in normalized:
+        return IntentResult(tool="ntf_escalation_disable", payload={})
+
     if "тихий дайджест включи" in normalized:
         return IntentResult(tool="ntf_quiet_digest_on", payload={})
 

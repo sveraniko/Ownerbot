@@ -81,6 +81,16 @@ async def handle(payload: Payload, correlation_id: str, session, actor: ToolActo
         "ops_alerts_enabled": settings.ops_alerts_enabled,
         "ops_alerts_cooldown_hours": settings.ops_alerts_cooldown_hours,
         "ops_alerts_last_sent_at": settings.ops_alerts_last_sent_at.isoformat() if settings.ops_alerts_last_sent_at else None,
+        "escalation_enabled": bool(settings.escalation_enabled),
+        "escalation_stage1_after_minutes": int(settings.escalation_stage1_after_minutes),
+        "escalation_repeat_every_minutes": int(settings.escalation_repeat_every_minutes),
+        "escalation_max_repeats": int(settings.escalation_max_repeats),
+        "escalation_snoozed_until": settings.escalation_snoozed_until.isoformat() if settings.escalation_snoozed_until else None,
+        "escalation_last_event_key": settings.escalation_last_event_key,
+        "escalation_last_sent_at": settings.escalation_last_sent_at.isoformat() if settings.escalation_last_sent_at else None,
+        "escalation_repeat_count": int(settings.escalation_repeat_count),
+        "escalation_last_ack_key": settings.escalation_last_ack_key,
+        "escalation_last_ack_at": settings.escalation_last_ack_at.isoformat() if settings.escalation_last_ack_at else None,
         "ops_rules": {
             "unanswered_threshold_hours": settings.ops_unanswered_threshold_hours,
             "unanswered_min_count": settings.ops_unanswered_min_count,
@@ -98,7 +108,8 @@ async def handle(payload: Payload, correlation_id: str, session, actor: ToolActo
             f"Digest: {'on' if settings.digest_enabled else 'off'} ({settings.digest_time_local} {settings.digest_tz}, format={normalize_digest_format(settings.digest_format)})\n"
             f"Quiet digest: {'on' if settings.digest_quiet_enabled else 'off'} (interval={int(settings.digest_quiet_attempt_interval_minutes)}m, silence={int(settings.digest_quiet_max_silence_days)}d)\n"
             f"Weekly: {'on' if settings.weekly_enabled else 'off'} (dow={weekly_dow}, {settings.weekly_time_local} {settings.weekly_tz})\n"
-            f"Ops alerts: {'on' if settings.ops_alerts_enabled else 'off'} (cd={settings.ops_alerts_cooldown_hours}ч, unanswered>{settings.ops_unanswered_threshold_hours}h, low<={settings.ops_low_stock_lte})"
+            f"Ops alerts: {'on' if settings.ops_alerts_enabled else 'off'} (cd={settings.ops_alerts_cooldown_hours}ч, unanswered>{settings.ops_unanswered_threshold_hours}h, low<={settings.ops_low_stock_lte})\n"
+            f"Escalation: {'on' if settings.escalation_enabled else 'off'} (stage1={int(settings.escalation_stage1_after_minutes)}m, repeat={int(settings.escalation_repeat_every_minutes)}m, max={int(settings.escalation_max_repeats)})"
         ),
     }
     return ToolResponse.ok(correlation_id=correlation_id, data=data, provenance=ToolProvenance(sources=["owner_notify_settings"]))

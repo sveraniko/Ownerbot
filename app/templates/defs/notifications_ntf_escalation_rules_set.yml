@@ -1,0 +1,12 @@
+template_id: NTF_ESCALATION_RULES_SET
+category: notifications
+title: Настроить escalation rules
+button_text: Escalation rules
+kind: ACTION
+tool_name: ntf_escalation_rules_set
+order: 55
+default_payload:
+  stage1_after_minutes: 120
+  repeat_every_minutes: 360
+  max_repeats: 3
+inputs: []
