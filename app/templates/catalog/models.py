@@ -40,6 +40,7 @@ class TemplateCatalog(BaseModel):
         "team",
         "systems",
         "advanced",
+        "forecast",
         "prices",
         "products",
         "looks",

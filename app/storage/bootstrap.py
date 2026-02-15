@@ -72,6 +72,52 @@ def _build_order_items(now, paid_order_ids: list[str]) -> list[dict[str, object]
     return rows
 
 
+def _build_historical_paid_orders(now) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for offset in range(60):
+        order_num = 2001 + offset
+        created_at = now - timedelta(days=(offset % 45) + 1, hours=(offset * 3) % 20)
+        amount = round(36.0 + (offset % 9) * 7.25 + (offset // 9) * 1.4, 2)
+        rows.append(
+            {
+                "order_id": f"OB-{order_num}",
+                "status": "paid",
+                "amount": amount,
+                "customer_phone": f"+491711{order_num:06d}",
+                "payment_status": "paid",
+                "paid_at": created_at + timedelta(hours=1),
+                "shipping_status": "pending" if offset % 4 else "shipped",
+                "created_at": created_at,
+                "ship_due_at": created_at + timedelta(days=2),
+                "shipped_at": created_at + timedelta(days=1) if offset % 4 == 0 else None,
+            }
+        )
+    return rows
+
+
+def _build_historical_order_items(now, paid_order_ids: list[str]) -> list[dict[str, object]]:
+    product_ids = [row[0] for row in _PRODUCT_SEED]
+    rows: list[dict[str, object]] = []
+    for idx, order_id in enumerate(paid_order_ids):
+        item_count = (idx % 3) + 1
+        for item_offset in range(item_count):
+            product_idx = (idx * 2 + item_offset * 7) % len(product_ids)
+            product_id, _title, _category, price, _stock, _has_photo, _published, _has_video, _return_flagged = _PRODUCT_SEED[product_idx]
+            qty = ((idx + item_offset) % 4) + 1
+            unit_price = price if price > 0 else float(12 + (idx % 5) + item_offset)
+            rows.append(
+                {
+                    "order_id": order_id,
+                    "product_id": product_id,
+                    "qty": qty,
+                    "unit_price": round(unit_price, 2),
+                    "currency": "EUR",
+                    "created_at": now,
+                }
+            )
+    return rows
+
+
 def _alembic_config() -> Config:
     config_path = Path(__file__).parent / "alembic.ini"
     config = Config(str(config_path))
@@ -202,6 +248,8 @@ async def seed_demo_data() -> None:
                 "created_at": now - timedelta(hours=11),
             },
         ]
+        demo_orders.extend(_build_historical_paid_orders(now))
+
         orders: Sequence[OwnerbotDemoOrder] = [
             OwnerbotDemoOrder(
                 order_id=order_data["order_id"],
@@ -248,10 +296,12 @@ async def seed_demo_data() -> None:
             for order_data in demo_orders
             if order_data.get("status") == "paid" or order_data.get("payment_status") == "paid"
         ]
+        historical_paid_order_ids = [order_id for order_id in paid_order_ids if order_id.startswith("OB-20")]
+        special_paid_order_ids = [order_id for order_id in paid_order_ids if not order_id.startswith("OB-20")]
         existing_order_items = await session.execute(select(OwnerbotDemoOrderItem.order_id, OwnerbotDemoOrderItem.product_id))
         existing_item_keys = {(row[0], row[1]) for row in existing_order_items.all()}
         order_items = []
-        for item in _build_order_items(now, paid_order_ids):
+        for item in _build_order_items(now, special_paid_order_ids) + _build_historical_order_items(now, historical_paid_order_ids):
             item_key = (item["order_id"], item["product_id"])
             if item_key in existing_item_keys:
                 continue
