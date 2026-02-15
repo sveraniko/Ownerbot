@@ -1,0 +1,9 @@
+template_id: NTF_SEND_DIGEST_NOW
+category: notifications
+title: Отправить digest сейчас
+button_text: Digest NOW
+kind: REPORT
+tool_name: ntf_send_digest_now
+order: 60
+default_payload: {}
+inputs: []

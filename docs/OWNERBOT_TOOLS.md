@@ -79,3 +79,13 @@
 - Phrase intents: `график выручки N дней`, `покажи график продаж N дней` map to the same `revenue_trend` + PNG presentation.
 - `/weekly_pdf` -> preset workflow over existing tools: `revenue_trend(days=7)`, `kpi_snapshot`, `orders_search(status=stuck,limit=10)`, `chats_unanswered(limit=10)` and renders text-only PDF artifact (`weekly_pdf`).
 - Artifact generation writes audit event `artifact_generated` with `correlation_id`.
+
+### Notifications tools (Owner-only)
+- `ntf_status` — текущий статус подписок и параметров (FX threshold/cooldown, digest time/tz).
+- `ntf_fx_delta_subscribe` — включить FX delta уведомления (`min_percent>=0.01`, `cooldown_hours=1..168`).
+- `ntf_fx_delta_unsubscribe` — выключить FX delta уведомления.
+- `ntf_daily_digest_subscribe` — включить daily digest (опционально `time_local`, `tz`).
+- `ntf_daily_digest_unsubscribe` — выключить daily digest.
+- `ntf_send_digest_now` — ручной тестовый запуск digest (debug).
+
+> Все `ntf_*` работают только в контексте owner actor (`OWNER_IDS`) и пишут состояние в `owner_notify_settings`.

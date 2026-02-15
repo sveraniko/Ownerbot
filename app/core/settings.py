@@ -64,6 +64,7 @@ class Settings(BaseSettings):
     access_deny_audit_enabled: bool = Field(default=True, alias="ACCESS_DENY_AUDIT_ENABLED")
     access_deny_audit_ttl_sec: int = Field(default=60, alias="ACCESS_DENY_AUDIT_TTL_SEC")
     access_deny_notify_once: bool = Field(default=False, alias="ACCESS_DENY_NOTIFY_ONCE")
+    notify_worker_enabled: bool = Field(default=True, alias="NOTIFY_WORKER_ENABLED")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
     @field_validator("owner_ids", mode="before")

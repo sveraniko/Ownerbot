@@ -12,10 +12,13 @@ from app.core.logging import configure_logging
 from app.core.preflight import format_preflight_report, preflight_validate_settings
 from app.core.redis import get_redis
 from app.core.settings import get_settings
+from app.core.tasks import NotifyWorker
 from app.storage.bootstrap import run_migrations, seed_demo_data
 from app.upstream.selector import resolve_effective_mode
 
 logger = logging.getLogger(__name__)
+
+_NOTIFY_TASK: asyncio.Task | None = None
 
 
 def build_dispatcher() -> Dispatcher:
@@ -33,11 +36,28 @@ def build_dispatcher() -> Dispatcher:
     return dispatcher
 
 
-async def on_startup() -> None:
+async def on_startup(bot: Bot) -> None:
+    global _NOTIFY_TASK
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, run_migrations)
     await seed_demo_data()
+    settings = get_settings()
+    if settings.notify_worker_enabled:
+        worker = NotifyWorker(bot)
+        _NOTIFY_TASK = asyncio.create_task(worker.run_forever(), name="notify-worker")
     logger.info("startup_complete")
+
+
+async def on_shutdown() -> None:
+    global _NOTIFY_TASK
+    if _NOTIFY_TASK is None:
+        return
+    _NOTIFY_TASK.cancel()
+    try:
+        await _NOTIFY_TASK
+    except asyncio.CancelledError:
+        pass
+    _NOTIFY_TASK = None
 
 
 async def _resolve_mode_for_preflight(settings) -> tuple[str, str | None, bool]:
@@ -101,8 +121,11 @@ def main() -> None:
 
 
 async def start_polling(dispatcher: Dispatcher, bot: Bot) -> None:
-    await on_startup()
-    await dispatcher.start_polling(bot)
+    await on_startup(bot)
+    try:
+        await dispatcher.start_polling(bot)
+    finally:
+        await on_shutdown()
 
 
 if __name__ == "__main__":

@@ -39,6 +39,12 @@ from app.tools.impl import (
     bulk_flag_order,
     demand_forecast,
     reorder_plan,
+    ntf_status,
+    ntf_fx_delta_subscribe,
+    ntf_fx_delta_unsubscribe,
+    ntf_daily_digest_subscribe,
+    ntf_daily_digest_unsubscribe,
+    ntf_send_digest_now,
 )
 
 
@@ -81,4 +87,10 @@ def build_registry() -> ToolRegistry:
     registry.register("retrospective_last", "1.0", retrospective_last.Payload, retrospective_last.handle)
     registry.register("demand_forecast", "1.0", demand_forecast.Payload, demand_forecast.handle)
     registry.register("reorder_plan", "1.0", reorder_plan.Payload, reorder_plan.handle)
+    registry.register("ntf_status", "1.0", ntf_status.Payload, ntf_status.handle)
+    registry.register("ntf_fx_delta_subscribe", "1.0", ntf_fx_delta_subscribe.Payload, ntf_fx_delta_subscribe.handle)
+    registry.register("ntf_fx_delta_unsubscribe", "1.0", ntf_fx_delta_unsubscribe.Payload, ntf_fx_delta_unsubscribe.handle)
+    registry.register("ntf_daily_digest_subscribe", "1.0", ntf_daily_digest_subscribe.Payload, ntf_daily_digest_subscribe.handle)
+    registry.register("ntf_daily_digest_unsubscribe", "1.0", ntf_daily_digest_unsubscribe.Payload, ntf_daily_digest_unsubscribe.handle)
+    registry.register("ntf_send_digest_now", "1.0", ntf_send_digest_now.Payload, ntf_send_digest_now.handle)
     return registry

@@ -1,0 +1,9 @@
+template_id: NTF_STATUS
+category: notifications
+title: Статус уведомлений
+button_text: NTF статус
+kind: REPORT
+tool_name: ntf_status
+order: 10
+default_payload: {}
+inputs: []

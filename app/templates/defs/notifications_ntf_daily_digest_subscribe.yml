@@ -1,0 +1,9 @@
+template_id: NTF_DAILY_DIGEST_SUBSCRIBE
+category: notifications
+title: Включить daily digest
+button_text: Digest ON
+kind: ACTION
+tool_name: ntf_daily_digest_subscribe
+order: 40
+default_payload: {}
+inputs: []

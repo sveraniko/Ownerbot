@@ -51,6 +51,7 @@ def test_catalog_listing_stable() -> None:
     assert catalog.list_categories()[0:6] == ["reports", "orders", "team", "systems", "advanced", "forecast"]
     assert "prices" in catalog.list_categories()
     assert "discounts" in catalog.list_categories()
+    assert "notifications" in catalog.list_categories()
 
     prices = [spec.button_text for spec in catalog.list_templates("prices")]
     assert prices == [
