@@ -61,6 +61,8 @@ async def cmd_help(message: Message) -> None:
         "• /trend 14\n"
         "• график выручки 7 дней\n"
         "• /weekly_pdf\n"
+        "• прогноз спроса\n"
+        "• план дозакупки\n"
         "• флагни заказ OB-1003 причина тест\n"
     )
     await message.answer(text)

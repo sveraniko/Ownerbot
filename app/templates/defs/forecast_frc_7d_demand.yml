@@ -1,0 +1,14 @@
+template_id: FRC_7D_DEMAND
+category: forecast
+title: Прогноз спроса на 7 дней
+button_text: Прогноз спроса 7д
+kind: REPORT
+tool_name: demand_forecast
+order: 140
+default_payload:
+  horizon_days: 7
+  history_days: 30
+  method: sma
+  window_days: 14
+  limit: 10
+inputs: []
