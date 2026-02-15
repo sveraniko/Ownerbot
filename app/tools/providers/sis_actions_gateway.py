@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.actions.capabilities import capability_for_endpoint, capability_support_status, get_sis_capabilities
 from app.core.settings import Settings
 from app.tools.contracts import ToolProvenance, ToolResponse, ToolWarning
 from app.upstream.sis_actions_client import SisActionsClient
@@ -91,6 +92,21 @@ async def run_sis_request(
     settings: Settings,
     idempotency_key: str | None = None,
 ) -> ToolResponse:
+    capability_key = capability_for_endpoint(path)
+    upstream_mode = getattr(settings, "upstream_mode", "SIS_HTTP")
+    sis_base_url = getattr(settings, "sis_base_url", "")
+    if capability_key and upstream_mode != "DEMO" and bool(sis_base_url):
+        capabilities = await get_sis_capabilities(settings=settings, correlation_id=correlation_id, payload_scope=payload)
+        supported = capability_support_status(capabilities, capability_key)
+        if supported is False:
+            endpoint = path
+            return ToolResponse.fail(
+                correlation_id=correlation_id,
+                code="UPSTREAM_NOT_IMPLEMENTED",
+                message=f"SIS does not support action={capability_key} yet. Implement SIS endpoint: {endpoint}",
+                details={"capability": capability_key, "endpoint": endpoint},
+            )
+
     client = SisActionsClient(settings)
     normalized_method = method.upper()
 

@@ -11,6 +11,7 @@ from aiogram.filters import Command
 from aiogram.types import BufferedInputFile
 from aiogram.types import CallbackQuery, Message
 
+from app.actions.capabilities import capability_support_status, get_sis_capabilities, required_capabilities_for_tool
 from app.actions.confirm_flow import create_confirm_token
 from app.bot.keyboards.confirm import confirm_keyboard, confirm_keyboard_with_force
 from app.bot.services.action_force import requires_force_confirm
@@ -104,6 +105,30 @@ async def tpl_home(callback_query: CallbackQuery) -> None:
     await callback_query.answer()
 
 
+
+
+async def _visible_templates_for_category(category: str, *, correlation_id: str) -> list:
+    catalog = get_template_catalog()
+    specs = catalog.list_templates(category)
+    settings = get_settings()
+    if settings.upstream_mode == "DEMO":
+        return specs
+
+    capabilities = await get_sis_capabilities(settings=settings, correlation_id=correlation_id)
+    visible = []
+    for spec in specs:
+        if spec.tool_name == "sis_actions_capabilities":
+            visible.append(spec)
+            continue
+        required = required_capabilities_for_tool(spec.tool_name)
+        if not required:
+            visible.append(spec)
+            continue
+        is_supported = all(capability_support_status(capabilities, key) is not False for key in required)
+        if is_supported:
+            visible.append(spec)
+    return visible
+
 @router.callback_query(F.data.startswith("tpl:cat:") | F.data.startswith("tpl:back:"))
 async def tpl_open_category(callback_query: CallbackQuery) -> None:
     parsed = _parse_category_page(callback_query.data)
@@ -113,7 +138,11 @@ async def tpl_open_category(callback_query: CallbackQuery) -> None:
     category, page = parsed
     await callback_query.message.edit_text(
         f"Шаблоны → {category_title(category)}",
-        reply_markup=build_templates_category_keyboard(category, page=page),
+        reply_markup=build_templates_category_keyboard(
+            category,
+            page=page,
+            templates=await _visible_templates_for_category(category, correlation_id=get_correlation_id()),
+        ),
     )
     await callback_query.answer()
 

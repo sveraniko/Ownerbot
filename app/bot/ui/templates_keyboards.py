@@ -34,9 +34,9 @@ def build_templates_main_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def build_templates_category_keyboard(category: str, page: int = 0) -> InlineKeyboardMarkup:
+def build_templates_category_keyboard(category: str, page: int = 0, templates=None) -> InlineKeyboardMarkup:
     catalog = get_template_catalog()
-    templates = catalog.list_templates(category)
+    templates = templates if templates is not None else catalog.list_templates(category)
     start = max(page, 0) * _PAGE_SIZE
     end = start + _PAGE_SIZE
     rows: list[list[InlineKeyboardButton]] = [

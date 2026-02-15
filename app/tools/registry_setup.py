@@ -30,6 +30,7 @@ from app.tools.impl import (
     sis_looks_publish,
     sis_discounts_clear,
     sis_discounts_set,
+    sis_actions_capabilities,
     sys_upstream_mode,
     sys_health,
     sys_audit_recent,
@@ -96,6 +97,7 @@ def build_registry() -> ToolRegistry:
     registry.register("sis_looks_publish", "1.0", sis_looks_publish.Payload, sis_looks_publish.handle, kind="action")
     registry.register("sis_discounts_clear", "1.0", sis_discounts_clear.Payload, sis_discounts_clear.handle, kind="action")
     registry.register("sis_discounts_set", "1.0", sis_discounts_set.Payload, sis_discounts_set.handle, kind="action")
+    registry.register("sis_actions_capabilities", "1.0", sis_actions_capabilities.Payload, sis_actions_capabilities.handle)
     registry.register("sys_upstream_mode", "1.0", sys_upstream_mode.Payload, sys_upstream_mode.handle)
     registry.register("sys_health", "1.0", sys_health.Payload, sys_health.handle)
     registry.register("sys_audit_recent", "1.0", sys_audit_recent.Payload, sys_audit_recent.handle)
