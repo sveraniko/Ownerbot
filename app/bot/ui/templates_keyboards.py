@@ -11,6 +11,7 @@ _CATEGORY_META = {
     "team": ("👥", "Команда"),
     "systems": ("⚙️", "Системы"),
     "advanced": ("🔧", "Advanced"),
+    "forecast": ("🔮", "Прогнозы"),
     "prices": ("💸", "Цены"),
     "products": ("📦", "Товары"),
     "looks": ("👗", "Луки"),

@@ -1,0 +1,16 @@
+template_id: FRC_REORDER_PLAN
+category: forecast
+title: План дозакупки
+button_text: План дозакупки
+kind: REPORT
+tool_name: reorder_plan
+order: 141
+default_payload:
+  horizon_days: 14
+  history_days: 30
+  method: sma
+  window_days: 14
+  lead_time_days: 14
+  safety_stock_days: 7
+  limit: 20
+inputs: []

@@ -53,6 +53,8 @@ EXPECTED_TEMPLATE_IDS = {
     "DSC_STATUS",
     "DSC_TOP_USED",
     "DSC_CREATE_COUPON",
+    "FRC_7D_DEMAND",
+    "FRC_REORDER_PLAN",
 }
 
 
@@ -65,4 +67,4 @@ def test_templates_v2_coverage_ids_present() -> None:
 def test_templates_v2_categories_present() -> None:
     catalog = load_template_catalog()
     categories = set(catalog.list_categories())
-    assert {"reports", "orders", "team", "systems", "advanced", "products"}.issubset(categories)
+    assert {"reports", "orders", "team", "systems", "advanced", "products", "forecast"}.issubset(categories)
