@@ -1,0 +1,9 @@
+template_id: NTF_SEND_WEEKLY_NOW
+category: notifications
+title: Отправить weekly сейчас
+button_text: Weekly NOW
+kind: REPORT
+tool_name: ntf_send_weekly_now
+order: 90
+default_payload: {}
+inputs: []

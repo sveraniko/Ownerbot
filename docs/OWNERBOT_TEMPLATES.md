@@ -301,11 +301,14 @@
 * **NTF_FX_DELTA_UNSUBSCRIBE** — Отписаться от FX
 * **NTF_DAILY_DIGEST_SUBSCRIBE** — Ежедневный дайджест (время)
 * **NTF_DAILY_DIGEST_UNSUBSCRIBE** — Отписаться от дайджеста
+* **NTF_DIGEST_FORMAT_SET** — Формат daily digest (`text|png|pdf`)
+* **NTF_WEEKLY_SUBSCRIBE** — Подписаться на weekly PDF (день/время/tz)
+* **NTF_WEEKLY_UNSUBSCRIBE** — Выключить weekly PDF
 
 ### Разовые уведомления
 
 * **NTF_SEND_DIGEST_NOW** — Прислать digest сейчас (debug/проверка)
-* **NTF_SEND_WEEKLY_PDF_NOW** — Прислать weekly PDF сейчас
+* **NTF_SEND_WEEKLY_NOW** — Прислать weekly PDF сейчас
 
 ---
 

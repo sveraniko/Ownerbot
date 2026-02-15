@@ -1,0 +1,9 @@
+template_id: NTF_WEEKLY_UNSUBSCRIBE
+category: notifications
+title: Выключить weekly PDF
+button_text: Weekly OFF
+kind: ACTION
+tool_name: ntf_weekly_unsubscribe
+order: 80
+default_payload: {}
+inputs: []

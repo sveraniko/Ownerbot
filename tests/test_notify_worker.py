@@ -1,6 +1,6 @@
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
-from contextlib import asynccontextmanager
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
@@ -31,7 +31,7 @@ class FakeRedis:
 
 @pytest.mark.asyncio
 async def test_notify_worker_skips_when_lock_not_acquired(monkeypatch):
-    bot = SimpleNamespace(send_message=AsyncMock())
+    bot = SimpleNamespace(send_message=AsyncMock(), send_photo=AsyncMock(), send_document=AsyncMock())
     worker = NotifyWorker(bot)
 
     monkeypatch.setattr("app.core.tasks.notify_worker.get_redis", AsyncMock(return_value=FakeRedis(lock=False)))
@@ -49,15 +49,7 @@ async def test_notify_worker_no_state_update_on_send_failure(monkeypatch):
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
     async with async_session() as session:
-        session.add(
-            OwnerNotifySettings(
-                owner_id=7,
-                fx_delta_enabled=True,
-                fx_delta_min_percent=0.1,
-                fx_delta_cooldown_hours=1,
-                fx_delta_last_notified_rate=1.0,
-            )
-        )
+        session.add(OwnerNotifySettings(owner_id=7, digest_enabled=True, digest_time_local="00:00", digest_tz="UTC", digest_format="text"))
         await session.commit()
 
     @asynccontextmanager
@@ -65,54 +57,98 @@ async def test_notify_worker_no_state_update_on_send_failure(monkeypatch):
         async with async_session() as s:
             yield s
 
-    bot = SimpleNamespace(send_message=AsyncMock(side_effect=RuntimeError("boom")))
+    bot = SimpleNamespace(send_message=AsyncMock(side_effect=RuntimeError("boom")), send_photo=AsyncMock(), send_document=AsyncMock())
     worker = NotifyWorker(bot)
 
     monkeypatch.setattr("app.core.tasks.notify_worker.session_scope", fake_scope)
     monkeypatch.setattr("app.core.tasks.notify_worker.get_redis", AsyncMock(return_value=FakeRedis(lock=True)))
     monkeypatch.setattr("app.core.tasks.notify_worker.get_settings", lambda: SimpleNamespace(owner_ids=[7]))
     monkeypatch.setattr(
-        "app.core.tasks.notify_worker.sis_fx_status.handle",
-        AsyncMock(return_value=SimpleNamespace(status="ok", data={"effective_rate": 1.2})),
+        "app.core.tasks.notify_worker.build_daily_digest",
+        AsyncMock(return_value=SimpleNamespace(text="digest", series=[], kpi_summary={}, ops_summary={}, fx_summary={}, warnings=[])),
     )
 
     await worker.tick()
 
     async with async_session() as session:
         row = await session.get(OwnerNotifySettings, 7)
-        assert row.fx_delta_last_notified_at is None
+        assert row.digest_last_sent_at is None
 
 
 @pytest.mark.asyncio
-async def test_safe_send_retries_on_429(monkeypatch):
+async def test_safe_send_retries_on_429():
     class RetryAfterError(Exception):
         def __init__(self):
             self.retry_after = 0
 
-    bot = SimpleNamespace(send_message=AsyncMock(side_effect=[RetryAfterError(), None]))
+    bot = SimpleNamespace(send_message=AsyncMock(side_effect=[RetryAfterError(), None]), send_photo=AsyncMock(), send_document=AsyncMock())
     worker = NotifyWorker(bot)
 
-    sent = await worker._safe_send(1, "hello")
+    sent = await worker._safe_send_message(1, "hello")
     assert sent is True
     assert bot.send_message.await_count == 2
 
 
 @pytest.mark.asyncio
-async def test_notify_worker_sends_when_lock_acquired(monkeypatch):
-    bot = SimpleNamespace(send_message=AsyncMock())
+async def test_digest_png_uses_photo_and_updates_state(monkeypatch):
+    class DummySettings:
+        fx_delta_enabled = False
+        digest_enabled = True
+        digest_tz = "UTC"
+        digest_time_local = "00:00"
+        digest_last_sent_at = None
+        digest_format = "png"
+        weekly_enabled = False
+        weekly_tz = "UTC"
+        weekly_time_local = "09:30"
+        weekly_day_of_week = 0
+        weekly_last_sent_at = None
+        last_error_notice_at = None
+
+    class FakeSession:
+        committed = False
+
+        async def commit(self):
+            self.committed = True
+
+    fake_session = FakeSession()
+
+    @asynccontextmanager
+    async def fake_scope():
+        yield fake_session
+
+    bot = SimpleNamespace(send_message=AsyncMock(), send_photo=AsyncMock(), send_document=AsyncMock())
     worker = NotifyWorker(bot)
 
+    monkeypatch.setattr("app.core.tasks.notify_worker.session_scope", fake_scope)
+    monkeypatch.setattr("app.core.tasks.notify_worker.get_redis", AsyncMock(return_value=FakeRedis(lock=True)))
+    monkeypatch.setattr("app.core.tasks.notify_worker.get_settings", lambda: SimpleNamespace(owner_ids=[1]))
+    monkeypatch.setattr("app.core.tasks.notify_worker.NotificationSettingsService.get_or_create", AsyncMock(return_value=DummySettings()))
+    monkeypatch.setattr(
+        "app.core.tasks.notify_worker.build_daily_digest",
+        AsyncMock(return_value=SimpleNamespace(text="digest", series=[{"day": "2026-01-01", "revenue_net": 100}], kpi_summary={}, ops_summary={}, fx_summary={}, warnings=[])),
+    )
+
+    await worker.tick()
+    assert bot.send_photo.await_count == 1
+    assert bot.send_document.await_count == 0
+    assert fake_session.committed is True
+
+
+@pytest.mark.asyncio
+async def test_digest_pdf_uses_document(monkeypatch):
     class DummySettings:
-        fx_delta_enabled = True
-        fx_delta_min_percent = 0.1
-        fx_delta_cooldown_hours = 1
-        fx_delta_last_notified_rate = 1.0
-        fx_delta_last_notified_at = None
-        fx_delta_last_seen_sis_event_at = None
-        digest_enabled = False
-        digest_tz = "Europe/Berlin"
-        digest_time_local = "09:00"
+        fx_delta_enabled = False
+        digest_enabled = True
+        digest_tz = "UTC"
+        digest_time_local = "00:00"
         digest_last_sent_at = None
+        digest_format = "pdf"
+        weekly_enabled = False
+        weekly_tz = "UTC"
+        weekly_time_local = "09:30"
+        weekly_day_of_week = 0
+        weekly_last_sent_at = None
         last_error_notice_at = None
 
     class FakeSession:
@@ -123,17 +159,17 @@ async def test_notify_worker_sends_when_lock_acquired(monkeypatch):
     async def fake_scope():
         yield FakeSession()
 
+    bot = SimpleNamespace(send_message=AsyncMock(), send_photo=AsyncMock(), send_document=AsyncMock())
+    worker = NotifyWorker(bot)
+
     monkeypatch.setattr("app.core.tasks.notify_worker.session_scope", fake_scope)
     monkeypatch.setattr("app.core.tasks.notify_worker.get_redis", AsyncMock(return_value=FakeRedis(lock=True)))
     monkeypatch.setattr("app.core.tasks.notify_worker.get_settings", lambda: SimpleNamespace(owner_ids=[1]))
+    monkeypatch.setattr("app.core.tasks.notify_worker.NotificationSettingsService.get_or_create", AsyncMock(return_value=DummySettings()))
     monkeypatch.setattr(
-        "app.core.tasks.notify_worker.NotificationSettingsService.get_or_create",
-        AsyncMock(return_value=DummySettings()),
-    )
-    monkeypatch.setattr(
-        "app.core.tasks.notify_worker.sis_fx_status.handle",
-        AsyncMock(return_value=SimpleNamespace(status="ok", data={"effective_rate": 1.2})),
+        "app.core.tasks.notify_worker.build_daily_digest",
+        AsyncMock(return_value=SimpleNamespace(text="digest", series=[{"day": "2026-01-01", "revenue_net": 100}], kpi_summary={}, ops_summary={}, fx_summary={}, warnings=[])),
     )
 
     await worker.tick()
-    assert bot.send_message.await_count == 1
+    assert bot.send_document.await_count == 1

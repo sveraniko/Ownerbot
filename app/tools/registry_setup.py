@@ -45,6 +45,10 @@ from app.tools.impl import (
     ntf_daily_digest_subscribe,
     ntf_daily_digest_unsubscribe,
     ntf_send_digest_now,
+    ntf_digest_format_set,
+    ntf_weekly_subscribe,
+    ntf_weekly_unsubscribe,
+    ntf_send_weekly_now,
 )
 
 
@@ -93,4 +97,8 @@ def build_registry() -> ToolRegistry:
     registry.register("ntf_daily_digest_subscribe", "1.0", ntf_daily_digest_subscribe.Payload, ntf_daily_digest_subscribe.handle)
     registry.register("ntf_daily_digest_unsubscribe", "1.0", ntf_daily_digest_unsubscribe.Payload, ntf_daily_digest_unsubscribe.handle)
     registry.register("ntf_send_digest_now", "1.0", ntf_send_digest_now.Payload, ntf_send_digest_now.handle)
+    registry.register("ntf_digest_format_set", "1.0", ntf_digest_format_set.Payload, ntf_digest_format_set.handle)
+    registry.register("ntf_weekly_subscribe", "1.0", ntf_weekly_subscribe.Payload, ntf_weekly_subscribe.handle)
+    registry.register("ntf_weekly_unsubscribe", "1.0", ntf_weekly_unsubscribe.Payload, ntf_weekly_unsubscribe.handle)
+    registry.register("ntf_send_weekly_now", "1.0", ntf_send_weekly_now.Payload, ntf_send_weekly_now.handle)
     return registry

@@ -7,12 +7,24 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from aiogram import Bot
+from aiogram.types import BufferedInputFile
 
 from app.core.audit import write_audit_event
 from app.core.db import session_scope
 from app.core.redis import get_redis
 from app.core.settings import get_settings
-from app.notify import NotificationSettingsService, extract_fx_rate_and_schedule, should_send_digest, should_send_fx_delta
+from app.notify import (
+    NotificationSettingsService,
+    build_daily_digest,
+    build_weekly_digest,
+    extract_fx_rate_and_schedule,
+    normalize_digest_format,
+    render_revenue_trend_png,
+    render_weekly_pdf,
+    should_send_digest,
+    should_send_fx_delta,
+    should_send_weekly,
+)
 from app.tools.impl import sis_fx_status
 
 
@@ -63,6 +75,9 @@ class NotifyWorker:
             if notify_settings.digest_enabled:
                 await self._maybe_send_digest(owner_id, notify_settings, session)
 
+            if notify_settings.weekly_enabled:
+                await self._maybe_send_weekly(owner_id, notify_settings, session)
+
     async def _maybe_send_fx_delta(self, owner_id: int, notify_settings, session) -> None:
         now = datetime.now(timezone.utc)
         try:
@@ -86,7 +101,7 @@ class NotifyWorker:
             new_rate = float(snapshot.effective_rate or 0)
             delta_pct = ((new_rate - old_rate) / old_rate * 100) if old_rate else 0.0
             message = f"🔔 FX delta: {old_rate:.4f} → {new_rate:.4f} ({delta_pct:+.2f}%)"
-            sent = await self._safe_send(owner_id, message)
+            sent = await self._safe_send_message(owner_id, message)
             if not sent:
                 return
 
@@ -113,30 +128,83 @@ class NotifyWorker:
         if not should_send_digest(now_local=now_local, last_sent_at=last_sent_local, digest_time_local=notify_settings.digest_time_local):
             return
 
-        payload = sis_fx_status.Payload()
-        fx_response = await sis_fx_status.handle(payload, correlation_id=f"notify-digest-{owner_id}", session=session)
-        fx_line = "FX: N/A"
-        if fx_response.status == "ok":
-            snapshot = extract_fx_rate_and_schedule(fx_response.data)
-            if snapshot.effective_rate is not None:
-                would_apply = fx_response.data.get("would_apply", "N/A")
-                fx_line = f"FX: {snapshot.effective_rate:.4f} (would_apply={would_apply})"
+        bundle = await build_daily_digest(owner_id, session, correlation_id=f"notify-digest-{owner_id}")
+        digest_format = normalize_digest_format(notify_settings.digest_format)
 
-        text = (
-            f"🗓 Daily digest {now_local.date().isoformat()}\n"
-            "KPI today vs yesterday: N/A\n"
-            "KPI 7d: N/A\n"
-            f"{fx_line}\n"
-            "Top problems: N/A"
-        )
-        sent = await self._safe_send(owner_id, text)
-        if not sent:
+        send_ok = await self._safe_send_message(owner_id, bundle.text)
+        if not send_ok:
             return
+        try:
+            if digest_format == "png":
+                png = render_revenue_trend_png(bundle.series, "Daily revenue trend", str(notify_settings.digest_tz))
+                send_ok = await self._safe_send_photo(owner_id, png, "Daily digest chart")
+            elif digest_format == "pdf":
+                pdf = render_weekly_pdf(bundle)
+                send_ok = await self._safe_send_document(owner_id, pdf, filename="daily_digest.pdf", caption="Daily digest PDF")
+        except Exception as exc:
+            await write_audit_event("notify_digest_render_failed", {"owner_id": owner_id, "format": digest_format, "message": str(exc)[:200]})
+            return
+
+        if not send_ok:
+            return
+
         notify_settings.digest_last_sent_at = now_utc
         await session.commit()
-        await write_audit_event("notify_digest_sent", {"owner_id": owner_id, "date": now_local.date().isoformat()})
+        await write_audit_event("notify_digest_sent_v2", {"owner_id": owner_id, "date": now_local.date().isoformat(), "format": digest_format})
 
-    async def _safe_send(self, chat_id: int, text: str, max_retries: int = 3) -> bool:
+    async def _maybe_send_weekly(self, owner_id: int, notify_settings, session) -> None:
+        now_utc = datetime.now(timezone.utc)
+        try:
+            weekly_tz = ZoneInfo(str(notify_settings.weekly_tz or notify_settings.digest_tz))
+        except Exception:
+            weekly_tz = ZoneInfo("Europe/Berlin")
+        now_local = now_utc.astimezone(weekly_tz)
+        last_local = notify_settings.weekly_last_sent_at.astimezone(weekly_tz) if notify_settings.weekly_last_sent_at else None
+        if not should_send_weekly(
+            now_local=now_local,
+            last_sent_at_local=last_local,
+            weekly_day_of_week=int(notify_settings.weekly_day_of_week),
+            weekly_time_local=notify_settings.weekly_time_local,
+        ):
+            return
+
+        bundle = await build_weekly_digest(owner_id, session, correlation_id=f"notify-weekly-{owner_id}")
+        try:
+            pdf = render_weekly_pdf(bundle)
+        except Exception as exc:
+            await write_audit_event("notify_weekly_render_failed", {"owner_id": owner_id, "message": str(exc)[:200]})
+            return
+
+        sent_doc = await self._safe_send_document(owner_id, pdf, filename="weekly_report.pdf", caption="📅 Weekly report")
+        if not sent_doc:
+            return
+        sent_msg = await self._safe_send_message(owner_id, bundle.text)
+        if not sent_msg:
+            return
+
+        notify_settings.weekly_last_sent_at = now_utc
+        await session.commit()
+        await write_audit_event("notify_weekly_sent", {"owner_id": owner_id, "week": str(now_local.isocalendar()[:2])[:200]})
+
+    async def _safe_send_message(self, chat_id: int, text: str, max_retries: int = 3) -> bool:
+        async def _sender():
+            await self._bot.send_message(chat_id=chat_id, text=text, disable_notification=False)
+
+        return await self._safe_send_with_retry(chat_id, _sender, max_retries=max_retries)
+
+    async def _safe_send_document(self, chat_id: int, content: bytes, filename: str, caption: str, max_retries: int = 3) -> bool:
+        async def _sender():
+            await self._bot.send_document(chat_id=chat_id, document=BufferedInputFile(content, filename=filename), caption=caption)
+
+        return await self._safe_send_with_retry(chat_id, _sender, max_retries=max_retries)
+
+    async def _safe_send_photo(self, chat_id: int, content: bytes, caption: str, max_retries: int = 3) -> bool:
+        async def _sender():
+            await self._bot.send_photo(chat_id=chat_id, photo=BufferedInputFile(content, filename="digest.png"), caption=caption)
+
+        return await self._safe_send_with_retry(chat_id, _sender, max_retries=max_retries)
+
+    async def _safe_send_with_retry(self, chat_id: int, sender, max_retries: int = 3) -> bool:
         loop = asyncio.get_running_loop()
         last_sent = self._chat_last_send_ts.get(chat_id)
         if last_sent is not None:
@@ -146,7 +214,7 @@ class NotifyWorker:
 
         for attempt in range(max_retries):
             try:
-                await self._bot.send_message(chat_id=chat_id, text=text, disable_notification=False)
+                await sender()
                 self._chat_last_send_ts[chat_id] = loop.time()
                 return True
             except Exception as exc:
