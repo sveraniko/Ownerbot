@@ -48,7 +48,7 @@ inputs: []
 
 def test_catalog_listing_stable() -> None:
     catalog = load_template_catalog()
-    assert catalog.list_categories()[0:5] == ["reports", "orders", "team", "systems", "advanced"]
+    assert catalog.list_categories()[0:6] == ["reports", "orders", "team", "systems", "advanced", "forecast"]
     assert "prices" in catalog.list_categories()
     assert "discounts" in catalog.list_categories()
 
