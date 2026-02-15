@@ -37,6 +37,8 @@ from app.tools.impl import (
     kpi_compare,
     team_queue_summary,
     bulk_flag_order,
+    demand_forecast,
+    reorder_plan,
 )
 
 
@@ -77,4 +79,6 @@ def build_registry() -> ToolRegistry:
     registry.register("team_queue_summary", "1.1", team_queue_summary.Payload, team_queue_summary.handle, is_stub=False)
     registry.register("bulk_flag_order", "1.0", bulk_flag_order.Payload, bulk_flag_order.handle, kind="action")
     registry.register("retrospective_last", "1.0", retrospective_last.Payload, retrospective_last.handle)
+    registry.register("demand_forecast", "1.0", demand_forecast.Payload, demand_forecast.handle)
+    registry.register("reorder_plan", "1.0", reorder_plan.Payload, reorder_plan.handle)
     return registry

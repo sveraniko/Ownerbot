@@ -414,15 +414,22 @@ TemplateSpec поля:
 
 ---
 
-# Примечание по прогнозам спроса
+# Forecast templates (implemented, DEMO-only)
 
-Прогнозы (demand forecasting) — отдельный слой:
+Прогнозы уже реализованы как read-only слой в DEMO режиме.
 
-* нужны агрегаты продаж + сезонность + промо‑события
-* позже подключить SizeBot данные (гео/размер/пол/возраст)
+- **FRC_7D_DEMAND** (`demand_forecast`)
+  - Что делает: считает средний дневной спрос по paid продажам за историю и прогноз на 7 дней.
+  - Inputs: по умолчанию без шагов (one-tap); можно вызывать tool с `method`, `history_days`, `include_categories`.
+  - Output fields: `avg_daily_qty`, `forecast_daily_qty`, `forecast_total_qty`, `nonzero_days`, `confidence`, `notes[]`.
 
-Шаблоны для прогнозов можно зарезервировать:
+- **FRC_REORDER_PLAN** (`reorder_plan`)
+  - Что делает: строит reorder point и рекомендуемую дозакупку на горизонте.
+  - Inputs: по умолчанию без шагов (one-tap); параметры `lead_time_days`, `safety_stock_days` поддерживаются в tool payload.
+  - Output fields: `forecast_daily_qty`, `reorder_point`, `recommended_order_qty`, `stock_cover_days`, `confidence`, `notes[]`.
 
-* **FRC_7D_DEMAND** — прогноз спроса на 7 дней
-* **FRC_REORDER_PLAN** — план дозакупки
-  Но реализовывать после появления реальных фич‑таблиц и пайплайна.
+Ограничение: при `UPSTREAM_MODE != DEMO` оба инструмента возвращают `UPSTREAM_NOT_IMPLEMENTED` до появления SIS sales aggregates endpoint.
+
+Voice phrases:
+- «прогноз спроса», «прогноз на 7 дней», «что будет продаваться» → `demand_forecast`
+- «план закупки», «план дозакупки», «что докупить» → `reorder_plan`
