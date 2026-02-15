@@ -113,6 +113,16 @@
   * Tools: `kpi_snapshot`, `revenue_trend`, `orders_stuck`, `chats_unanswered`, `build_weekly_pdf`
   * Confirm: нет
 
+### 📎 Dashboard (on-demand)
+
+* **BIZ_DASHBOARD_DAILY_PNG** — Daily dashboard (PNG)
+* **BIZ_DASHBOARD_DAILY_TEXT** — Daily dashboard (Text)
+* **BIZ_DASHBOARD_WEEKLY_PDF** — Weekly dashboard (PDF)
+
+  * Tools: `biz_dashboard_daily`, `biz_dashboard_weekly` (reuse DigestBuilder + renderers)
+  * Safety: Redis lock + cooldown anti-spam
+  * Confirm: нет
+
 ---
 
 ## 🧾 Заказы

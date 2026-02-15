@@ -35,14 +35,14 @@ def render_revenue_trend_png(series: list[dict], title: str, subtitle: str) -> b
     return out.getvalue()
 
 
-def render_weekly_pdf(bundle: DigestBundle) -> bytes:
+def render_weekly_pdf(bundle: DigestBundle, report_title: str = "OwnerBot Weekly Report") -> bytes:
     chart = render_revenue_trend_png(bundle.series, "Revenue trend", "weekly context")
 
     buf = BytesIO()
     pdf = canvas.Canvas(buf, pagesize=A4)
     y = A4[1] - 18 * mm
 
-    y = _line(pdf, "OwnerBot Weekly Report", y, size=14, bold=True)
+    y = _line(pdf, report_title, y, size=14, bold=True)
     y = _line(pdf, bundle.text[:280], y)
     y -= 2 * mm
 

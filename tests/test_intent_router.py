@@ -81,3 +81,17 @@ def test_reorder_plan_intent_phrases() -> None:
 
     assert result.tool == "reorder_plan"
     assert result.payload == {"lead_time_days": 14, "safety_stock_days": 7, "horizon_days": 14}
+
+
+def test_business_dashboard_daily_intent() -> None:
+    result = route_intent("дай дашборд")
+
+    assert result.tool == "biz_dashboard_daily"
+    assert result.payload == {"format": "png"}
+
+
+def test_business_dashboard_weekly_intent() -> None:
+    result = route_intent("еженедельный отчет")
+
+    assert result.tool == "biz_dashboard_weekly"
+    assert result.payload == {"format": "pdf"}

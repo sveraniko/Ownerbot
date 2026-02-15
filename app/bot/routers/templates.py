@@ -8,6 +8,7 @@ from app.core.time import utcnow
 
 from aiogram import F, Router
 from aiogram.filters import Command
+from aiogram.types import BufferedInputFile
 from aiogram.types import CallbackQuery, Message
 
 from app.actions.confirm_flow import create_confirm_token
@@ -27,6 +28,7 @@ from app.core.contracts import CANCEL_CB_PREFIX, CONFIRM_CB_PREFIX
 from app.core.logging import get_correlation_id
 from app.core.redis import get_redis
 from app.core.settings import get_settings
+from app.core.tasks.notify_worker import NotifyWorker
 from app.templates.catalog import get_template_catalog
 from app.templates.catalog.parsers import parse_input_value
 from app.tools.contracts import ToolActor, ToolTenant
@@ -316,6 +318,25 @@ async def _run_template_action(message: Message, owner_user_id: int, spec, paylo
         idempotency_key=str(uuid.uuid4()),
         registry=registry,
     )
+
+    if response.status == "ok" and response.artifacts:
+        sender = NotifyWorker(message.bot)
+        for artifact in response.artifacts:
+            if artifact.type == "png":
+                await sender._safe_send_photo(owner_user_id, artifact.content, artifact.caption or "Dashboard PNG")
+                continue
+            if artifact.type == "pdf":
+                await sender._safe_send_document(owner_user_id, artifact.content, filename=artifact.filename, caption=artifact.caption or "Dashboard PDF")
+                continue
+            await message.answer_document(
+                BufferedInputFile(artifact.content, filename=artifact.filename),
+                caption=artifact.caption,
+            )
+
+        message_text = response.data.get("message") if isinstance(response.data, dict) else None
+        if isinstance(message_text, str) and message_text.strip():
+            await sender._safe_send_message(owner_user_id, message_text)
+        return
 
     if response.status == "ok" and presentation.get("kind") == "chart_png":
         days = int(presentation.get("days", payload.get("days", 30)))

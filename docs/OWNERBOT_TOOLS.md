@@ -95,5 +95,7 @@
 - `ntf_send_weekly_now` — ручной тестовый weekly (debug).
 - `ntf_ops_alerts_subscribe` — включить ops alerts (`cooldown_hours`, пороги unanswered/stuck/payment/errors/inventory).
 - `ntf_ops_alerts_unsubscribe` — выключить ops alerts.
+- `biz_dashboard_daily` — owner on-demand daily dashboard (`format=text|png|pdf`, `tz`, `horizon_days=1`) with Redis cooldown+lock; reuses digest builder/renderers.
+- `biz_dashboard_weekly` — owner on-demand weekly dashboard (`format=pdf`, `tz`, `week_mode=last7`) with Redis cooldown+lock; reuses weekly digest renderer.
 
 > Все `ntf_*` работают только в контексте owner actor (`OWNER_IDS`) и пишут состояние в `owner_notify_settings`.

@@ -54,6 +54,11 @@ def route_intent(text: str) -> IntentResult:
     if weekly_pdf_command_match:
         return IntentResult(tool="kpi_snapshot", payload={}, presentation={"kind": "weekly_pdf"})
 
+    if "дай дашборд" in normalized or "отчет за сегодня" in normalized or "отчёт за сегодня" in normalized:
+        return IntentResult(tool="biz_dashboard_daily", payload={"format": "png"})
+
+    if "еженедельный отчет" in normalized or "еженедельный отчёт" in normalized:
+        return IntentResult(tool="biz_dashboard_weekly", payload={"format": "pdf"})
 
     fx_status_phrases = ["fx статус", "что по курсу", "курс валют"]
     if "курс" in normalized or any(phrase in normalized for phrase in fx_status_phrases):
