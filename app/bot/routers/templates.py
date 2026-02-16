@@ -13,9 +13,11 @@ from aiogram.types import CallbackQuery, Message
 
 from app.actions.capabilities import capability_support_status, get_sis_capabilities, required_capabilities_for_tool
 from app.actions.confirm_flow import create_confirm_token
+from app.bot.filters.template_wizard_active import STATE_KEY_PREFIX, TemplateWizardActive
 from app.bot.keyboards.confirm import confirm_keyboard, confirm_keyboard_with_force
 from app.bot.services.action_force import requires_force_confirm
 from app.bot.services.action_preview import is_noop_preview
+from app.bot.services.menu_entrypoints import show_templates_home
 from app.bot.services.tool_runner import run_tool
 from app.bot.services.presentation import send_revenue_trend_png, send_weekly_pdf
 from app.bot.ui.formatting import detect_source_tag, format_tool_response
@@ -40,7 +42,7 @@ from app.upstream.selector import choose_data_mode, resolve_effective_mode
 router = Router()
 registry = build_registry()
 
-_STATE_KEY = "ownerbot:templates:state:"
+_STATE_KEY = STATE_KEY_PREFIX
 _STATE_TTL_SECONDS = 900
 
 
@@ -95,8 +97,7 @@ async def _prompt_current_step(message: Message, template_id: str, step_index: i
 
 @router.message(Command("templates"))
 async def cmd_templates(message: Message) -> None:
-    await _clear_state(message.from_user.id)
-    await message.answer("Шаблоны", reply_markup=build_templates_main_keyboard())
+    await show_templates_home(message)
 
 
 @router.callback_query(F.data == "tpl:home")
@@ -233,17 +234,14 @@ async def tpl_rate_set_input(message: Message) -> None:
     await _consume_step_value(message, message.from_user.id, spec, 2, raw)
 
 
-@router.message(F.text)
-async def templates_state_input(message: Message) -> None:
+@router.message(TemplateWizardActive())
+async def templates_state_input(message: Message, tpl_state: dict) -> None:
     if message.text is None:
-        return
-    state = await _get_state(message.from_user.id)
-    if not state:
         return
 
     catalog = get_template_catalog()
-    template_id = state.get("template_id")
-    step_index = state.get("step_index")
+    template_id = tpl_state.get("template_id")
+    step_index = tpl_state.get("step_index")
     if not isinstance(template_id, str) or not isinstance(step_index, int):
         await _clear_state(message.from_user.id)
         return
