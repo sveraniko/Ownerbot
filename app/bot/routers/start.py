@@ -4,17 +4,15 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
-from app.bot.ui.formatting import format_start_message, format_tools_list
+from app.bot.services.menu_entrypoints import show_help, show_tools
+from app.bot.ui.formatting import format_start_message
+from app.bot.ui.main_menu import build_main_menu_kb
 from app.core.db import check_db
 from app.core.redis import check_redis, get_redis
 from app.core.settings import get_settings
-from app.tools.registry_setup import build_registry
 from app.upstream.selector import resolve_effective_mode
 
 router = Router()
-registry = build_registry()
-
-
 @router.message(Command("start"))
 async def cmd_start(message: Message) -> None:
     settings = get_settings()
@@ -49,25 +47,15 @@ async def cmd_start(message: Message) -> None:
             "llm_provider": settings.llm_provider,
         }
     )
-    await message.answer(text)
+    text += "\nУправление: /templates или кнопка 📚 Шаблоны"
+    await message.answer(text, reply_markup=build_main_menu_kb())
 
 
 @router.message(Command("help"))
 async def cmd_help(message: Message) -> None:
-    text = (
-        "Примеры фраз:\n"
-        "• дай KPI за вчера\n"
-        "• что с заказами, что зависло\n"
-        "• /trend 14\n"
-        "• график выручки 7 дней\n"
-        "• /weekly_pdf\n"
-        "• прогноз спроса\n"
-        "• план дозакупки\n"
-        "• флагни заказ OB-1003 причина тест\n"
-    )
-    await message.answer(text)
+    await show_help(message)
 
 
 @router.message(Command("tools"))
 async def cmd_tools(message: Message) -> None:
-    await message.answer(format_tools_list(registry.list_definitions()))
+    await show_tools(message)

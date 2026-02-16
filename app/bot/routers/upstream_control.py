@@ -4,12 +4,12 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
+from app.bot.services.menu_entrypoints import show_upstream
 from app.core.logging import get_correlation_id
 from app.core.redis import get_redis
 from app.core.settings import get_settings
 from app.tools.providers.sis_gateway import upstream_unavailable
 from app.upstream.mode_store import set_runtime_mode
-from app.upstream.selector import resolve_effective_mode
 from app.upstream.sis_client import SisClient
 
 router = Router()
@@ -40,22 +40,7 @@ async def cmd_sis_check(message: Message) -> None:
 
 @router.message(Command("upstream"))
 async def cmd_upstream(message: Message) -> None:
-    settings = get_settings()
-    redis = await get_redis()
-    effective_mode, runtime_mode = await resolve_effective_mode(settings=settings, redis=redis)
-    cached_ping = "n/a"
-    if effective_mode == "AUTO" or runtime_mode == "AUTO":
-        try:
-            cached_ping = "ok" if await redis.get(":auto_ping_ok") == "1" else "unknown"
-        except Exception:
-            cached_ping = "unknown"
-    await message.answer(
-        "Upstream state\n"
-        f"effective: {effective_mode}\n"
-        f"runtime_override: {runtime_mode or 'none'}\n"
-        f"configured: {settings.upstream_mode}\n"
-        f"last_ping(auto): {cached_ping}"
-    )
+    await show_upstream(message)
 
 
 async def _set_mode(message: Message, mode: str) -> None:

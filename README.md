@@ -88,7 +88,9 @@ docker compose up --build
 ```
 
 4) Проверка:
-- `/start` — короткий runtime статус (DB/Redis/режим, ASR/LLM)
+- `/start` — короткий runtime статус (DB/Redis/режим, ASR/LLM) + показывает reply-меню
+- `/menu` — главное меню OwnerBot (кнопки для Templates/Systems/Upstream/Tools/Help)
+- `/templates` — основной UI шаблонов (также доступен через кнопку 📚 Шаблоны)
 - `/systems` — полный диагностический обзор OwnerBot/SIS/(future SizeBot) + preflight summary
 - `/shadow_check` — DEMO vs SIS сверка
 
