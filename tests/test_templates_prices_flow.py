@@ -9,14 +9,20 @@ async def _redis():
     return SimpleNamespace()
 
 
-class _DummyMessage:
+class _DummyPanel:
     def __init__(self) -> None:
         self.calls = []
-        self.from_user = SimpleNamespace(id=42)
-        self.text = None
 
-    async def answer(self, text: str, reply_markup=None):
-        self.calls.append((text, reply_markup))
+    async def show_panel(self, message, text: str, *, inline_kb=None, mode="replace"):
+        self.calls.append((text, inline_kb, mode))
+
+
+class _DummyMessage:
+    def __init__(self) -> None:
+        self.from_user = SimpleNamespace(id=42)
+        self.chat = SimpleNamespace(id=100)
+        self.text = None
+        self.bot = SimpleNamespace()
 
 
 @pytest.mark.asyncio
@@ -42,6 +48,8 @@ async def test_template_flow_dry_run_creates_force_confirm_buttons(monkeypatch) 
     async def _create_token(payload):
         return tokens.pop(0)
 
+    panel = _DummyPanel()
+    monkeypatch.setattr("app.bot.routers.templates.get_panel_manager", lambda: panel)
     monkeypatch.setattr("app.bot.routers.templates.resolve_effective_mode", _resolve)
     monkeypatch.setattr("app.bot.routers.templates.choose_data_mode", _choose)
     monkeypatch.setattr("app.bot.routers.templates.run_tool", _run_tool)
@@ -51,7 +59,7 @@ async def test_template_flow_dry_run_creates_force_confirm_buttons(monkeypatch) 
     msg = _DummyMessage()
     await templates._run_template_action(msg, 42, "sis_fx_reprice", {"dry_run": True, "rate_set_id": "h", "input_currency": "USD", "shop_currency": "EUR"})
 
-    _, markup = msg.calls[0]
+    _, markup, _ = panel.calls[0]
     flat = [b.text for row in markup.inline_keyboard for b in row]
     assert "✅ Применить" in flat
     assert "⚠️ Применить несмотря на аномалию" in flat
@@ -77,6 +85,8 @@ async def test_template_flow_dry_run_default_confirm_button(monkeypatch) -> None
     async def _create_token(payload):
         return "tok-normal"
 
+    panel = _DummyPanel()
+    monkeypatch.setattr("app.bot.routers.templates.get_panel_manager", lambda: panel)
     monkeypatch.setattr("app.bot.routers.templates.resolve_effective_mode", _resolve)
     monkeypatch.setattr("app.bot.routers.templates.choose_data_mode", _choose)
     monkeypatch.setattr("app.bot.routers.templates.run_tool", _run_tool)
@@ -86,7 +96,7 @@ async def test_template_flow_dry_run_default_confirm_button(monkeypatch) -> None
     msg = _DummyMessage()
     await templates._run_template_action(msg, 42, "sis_prices_bump", {"dry_run": True, "bump_percent": "10"})
 
-    _, markup = msg.calls[0]
+    _, markup, _ = panel.calls[0]
     flat = [b.text for row in markup.inline_keyboard for b in row]
     assert "✅ Подтвердить" in flat
 
@@ -111,6 +121,8 @@ async def test_template_flow_dry_run_noop_skips_confirm(monkeypatch) -> None:
     async def _create_token(payload):
         raise AssertionError("confirm token must not be created for no-op preview")
 
+    panel = _DummyPanel()
+    monkeypatch.setattr("app.bot.routers.templates.get_panel_manager", lambda: panel)
     monkeypatch.setattr("app.bot.routers.templates.resolve_effective_mode", _resolve)
     monkeypatch.setattr("app.bot.routers.templates.choose_data_mode", _choose)
     monkeypatch.setattr("app.bot.routers.templates.run_tool", _run_tool)
@@ -120,7 +132,7 @@ async def test_template_flow_dry_run_noop_skips_confirm(monkeypatch) -> None:
     msg = _DummyMessage()
     await templates._run_template_action(msg, 42, "sis_fx_reprice_auto", {"dry_run": True})
 
-    _, markup = msg.calls[0]
+    _, markup, _ = panel.calls[0]
     assert markup is None
 
 
@@ -169,14 +181,17 @@ async def test_consume_step_value_runs_action_when_inputs_finished(monkeypatch) 
 
 
 @pytest.mark.asyncio
-async def test_consume_step_value_parser_error_returns_message(monkeypatch) -> None:
+async def test_consume_step_value_parser_error_uses_panel(monkeypatch) -> None:
     from app.bot.routers import templates
     from app.templates.catalog.models import TemplateSpec
+
+    panel = _DummyPanel()
 
     async def _get_state(user_id: int):
         return {"payload_partial": {}}
 
     monkeypatch.setattr("app.bot.routers.templates._get_state", _get_state)
+    monkeypatch.setattr("app.bot.routers.templates.get_panel_manager", lambda: panel)
 
     spec = TemplateSpec(
         template_id="X",
@@ -192,4 +207,4 @@ async def test_consume_step_value_parser_error_returns_message(monkeypatch) -> N
     msg = _DummyMessage()
     await templates._consume_step_value(msg, 42, spec, 0, "0")
 
-    assert "Процент скидки должен быть от 1 до 95." in msg.calls[0][0]
+    assert "Процент скидки должен быть от 1 до 95." in panel.calls[0][0]
