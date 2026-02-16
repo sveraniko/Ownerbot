@@ -8,14 +8,17 @@ from app.core.time import utcnow
 
 from aiogram import F, Router
 from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile
 from aiogram.types import CallbackQuery, Message
 
 from app.actions.capabilities import capability_support_status, get_sis_capabilities, required_capabilities_for_tool
 from app.actions.confirm_flow import create_confirm_token
 from app.bot.filters.template_wizard_active import STATE_KEY_PREFIX, TemplateWizardActive
+from app.bot.services.menu_entrypoints import show_templates_home
 from app.bot.keyboards.confirm import confirm_keyboard, confirm_keyboard_with_force
 from app.bot.ui.panel_manager import get_panel_manager
+from app.bot.ui.ui_cleanup import PANEL_MESSAGE_ID_KEY
 from app.bot.services.action_force import requires_force_confirm
 from app.bot.services.action_preview import is_noop_preview
 from app.bot.services.tool_runner import run_tool
@@ -95,16 +98,16 @@ async def _prompt_current_step(message: Message, template_id: str, step_index: i
 
 
 @router.message(Command("templates"))
-async def cmd_templates(message: Message) -> None:
-    panel = get_panel_manager()
+async def cmd_templates(message: Message, state: FSMContext) -> None:
     await _clear_state(message.from_user.id)
-    await panel.show_panel(message, "Шаблоны", inline_kb=build_templates_main_keyboard(), mode="replace")
+    await show_templates_home(message, state)
 
 
 @router.callback_query(F.data == "tpl:home")
-async def tpl_home(callback_query: CallbackQuery) -> None:
+async def tpl_home(callback_query: CallbackQuery, state: FSMContext) -> None:
     panel = get_panel_manager()
     await panel.show_panel(callback_query.message, "Шаблоны", inline_kb=build_templates_main_keyboard(), mode="edit")
+    await state.update_data({PANEL_MESSAGE_ID_KEY: callback_query.message.message_id})
     await callback_query.answer()
 
 
@@ -154,7 +157,7 @@ async def tpl_open_category(callback_query: CallbackQuery) -> None:
 
 
 @router.callback_query(F.data.startswith("tpl:run:"))
-async def tpl_run(callback_query: CallbackQuery) -> None:
+async def tpl_run(callback_query: CallbackQuery, state: FSMContext) -> None:
     template_id = callback_query.data.split(":", 2)[-1]
     catalog = get_template_catalog()
     try:
@@ -207,7 +210,7 @@ async def tpl_preset_value(callback_query: CallbackQuery) -> None:
 
 
 @router.message(Command("tpl_bump"))
-async def tpl_bump_input(message: Message) -> None:
+async def tpl_bump_input(message: Message, state: FSMContext) -> None:
     if message.text is None:
         return
     raw = message.text.replace("/tpl_bump", "", 1).strip()
@@ -226,8 +229,8 @@ async def tpl_bump_input(message: Message) -> None:
 async def tpl_rate_set_input(message: Message) -> None:
     if message.text is None:
         return
-    state = await _get_state(message.from_user.id)
-    if not state or state.get("template_id") != "PRC_FX_REPRICE" or state.get("step_index") != 2:
+    tpl_state = await _get_state(message.from_user.id)
+    if not tpl_state or tpl_state.get("template_id") != "PRC_FX_REPRICE" or tpl_state.get("step_index") != 2:
         await get_panel_manager().show_panel(message, "Нет активного FX шаблона. Запусти: /templates → Шаблоны → Цены → FX пересчёт цен", mode="edit")
         return
     raw = message.text.replace("/tpl_rate_set", "", 1).strip()
@@ -261,8 +264,8 @@ async def templates_state_input(message: Message, tpl_state: dict) -> None:
 
 
 async def _consume_step_value(message: Message, user_id: int, spec, step_index: int, raw_value: str) -> None:
-    state = await _get_state(user_id) or {}
-    payload = dict(state.get("payload_partial") or spec.default_payload)
+    tpl_state = await _get_state(user_id) or {}
+    payload = dict(tpl_state.get("payload_partial") or spec.default_payload)
     step = spec.inputs[step_index]
 
     try:

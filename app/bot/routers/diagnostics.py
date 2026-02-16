@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from aiogram import Router
 from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from app.bot.services.menu_entrypoints import show_systems
-from app.bot.ui.panel_manager import get_panel_manager
+from app.bot.ui.ui_cleanup import cleanup_ephemerals, register_ephemeral_message
 from app.core.logging import get_correlation_id
 from app.core.redis import get_redis
 from app.core.settings import get_settings
@@ -17,16 +18,16 @@ DEFAULT_SHADOW_PRESETS = ["kpi_snapshot_7", "revenue_trend_7", "orders_search_st
 
 
 @router.message(Command("systems"))
-async def cmd_systems(message: Message) -> None:
-    await show_systems(message)
+async def cmd_systems(message: Message, state: FSMContext) -> None:
+    await show_systems(message, state)
 
 
 @router.message(Command("shadow_check"))
-async def cmd_shadow_check(message: Message) -> None:
-    panel = get_panel_manager()
+async def cmd_shadow_check(message: Message, state: FSMContext) -> None:
     settings = get_settings()
     if not settings.diagnostics_enabled or not settings.shadow_check_enabled:
-        await panel.show_panel(message, "Shadow check disabled by config.", mode="replace")
+        sent = await message.answer("Shadow check disabled by config.")
+        await register_ephemeral_message(state, sent.message_id)
         return
 
     try:
@@ -45,4 +46,6 @@ async def cmd_shadow_check(message: Message) -> None:
         ),
         presets=DEFAULT_SHADOW_PRESETS,
     )
-    await panel.show_panel(message, format_shadow_report(report), mode="replace")
+    await cleanup_ephemerals(state, message.bot, message.chat.id)
+    sent = await message.answer(format_shadow_report(report))
+    await register_ephemeral_message(state, sent.message_id)

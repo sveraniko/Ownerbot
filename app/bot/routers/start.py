@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from aiogram import Router
 from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from app.bot.services.menu_entrypoints import show_help, show_tools
 from app.bot.ui.formatting import format_start_message
 from app.bot.ui.main_menu import build_main_menu_kb
-from app.bot.ui.panel_manager import get_panel_manager
+from app.bot.ui.ui_cleanup import LEGEND_MESSAGE_ID_KEY, cleanup_ephemerals, clear_state_preserving_ui_anchors, show_panel
 from app.core.db import check_db
 from app.core.redis import check_redis, get_redis
 from app.core.settings import get_settings
@@ -17,8 +18,7 @@ router = Router()
 
 
 @router.message(Command("start"))
-async def cmd_start(message: Message) -> None:
-    panel = get_panel_manager()
+async def cmd_start(message: Message, state: FSMContext) -> None:
     settings = get_settings()
     db_ok = False
     redis_ok = False
@@ -53,24 +53,25 @@ async def cmd_start(message: Message) -> None:
     )
     text += "\nУправление: /templates или кнопка 📚 Шаблоны"
 
-    await panel.clear_panel(message.chat.id, bot=message.bot)
-    await panel.clear_transients(message.chat.id, bot=message.bot)
-    await panel.ensure_home(message, text, reply_kb=build_main_menu_kb())
+    await clear_state_preserving_ui_anchors(state)
+    await cleanup_ephemerals(state, message.bot, message.chat.id)
+    panel_id = await show_panel(message, state, text, reply_markup=build_main_menu_kb())
+    await state.update_data({LEGEND_MESSAGE_ID_KEY: panel_id})
 
 
 @router.message(Command("help"))
-async def cmd_help(message: Message) -> None:
-    await show_help(message)
+async def cmd_help(message: Message, state: FSMContext) -> None:
+    await show_help(message, state)
 
 
 @router.message(Command("tools"))
-async def cmd_tools(message: Message) -> None:
-    await show_tools(message)
+async def cmd_tools(message: Message, state: FSMContext) -> None:
+    await show_tools(message, state)
 
 
 @router.message(Command("clean"))
-async def cmd_clean(message: Message) -> None:
-    panel = get_panel_manager()
-    await panel.clear_panel(message.chat.id, bot=message.bot)
-    await panel.clear_transients(message.chat.id, bot=message.bot)
-    await panel.ensure_home(message, "OwnerBot online", reply_kb=build_main_menu_kb())
+async def cmd_clean(message: Message, state: FSMContext) -> None:
+    await clear_state_preserving_ui_anchors(state)
+    await cleanup_ephemerals(state, message.bot, message.chat.id)
+    panel_id = await show_panel(message, state, "OwnerBot online", reply_markup=build_main_menu_kb())
+    await state.update_data({LEGEND_MESSAGE_ID_KEY: panel_id})
