@@ -77,10 +77,10 @@ cp ENV.example .env
 
 2) Минимум:
 - `BOT_TOKEN` — Telegram bot token
-- `OWNER_IDS` — allowlist владельцев (CSV)
+- `OWNER_IDS` — allowlist владельцев (CSV или JSON-массив, например `[1491225535, 7354501272]`)
 
 Опционально для notify_team:
-- `MANAGER_CHAT_IDS` — куда можно отправлять сообщения (CSV)
+- `MANAGER_CHAT_IDS` — куда можно отправлять сообщения (CSV или JSON-массив)
 
 3) Запуск:
 ```bash
@@ -93,6 +93,11 @@ docker compose up --build
 - `/shadow_check` — DEMO vs SIS сверка
 
 > Preflight запускается до старта polling: при критически сломанном env и `PREFLIGHT_FAIL_FAST=1` процесс завершится сразу с логом `preflight_failed`.
+
+> Формат list-переменных (`OWNER_IDS`, `MANAGER_CHAT_IDS`, `LLM_ALLOWED_ACTION_TOOLS`):
+> - допустимы **CSV** (`a,b,c`) и **JSON-массив** (`["a", "b"]` / `[1,2]`);
+> - пустое значение = пустой список;
+> - inline-комментарии в значении запрещены (например `OWNER_IDS=1,2 # comment` приведёт к ошибке парсинга).
 
 > Если ты менял baseline/migrations и уже есть “грязные” volume’ы:  
 > `docker compose down -v` (осознанно, удалит данные OwnerBot).
@@ -144,7 +149,7 @@ SIS Actions API использует заголовок **`X-OWNERBOT-KEY`** и 
 ### ASR / LLM (optional)
 - `ASR_PROVIDER` (`mock`/`openai`), `OPENAI_API_KEY`, `OPENAI_ASR_MODEL`
 - `LLM_PROVIDER` (`OFF`/`OPENAI`/`MOCK`), `OPENAI_LLM_MODEL`, `LLM_TIMEOUT_SECONDS`
-- `LLM_ALLOWED_ACTION_TOOLS` — allowlist action-tools для планировщика
+- `LLM_ALLOWED_ACTION_TOOLS` — allowlist action-tools для планировщика (CSV или JSON-массив строк)
 
 ---
 

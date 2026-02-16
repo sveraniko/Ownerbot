@@ -1,10 +1,31 @@
 from __future__ import annotations
 
+import json
 from functools import lru_cache
-from typing import List
+from typing import Annotated, Any, List
 
-from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, field_validator, model_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+
+def _parse_list_env(value: object) -> list[Any]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple):
+        return list(value)
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return []
+        if raw.startswith("["):
+            parsed = json.loads(raw)
+            if not isinstance(parsed, list):
+                raise ValueError("JSON list env value must be an array.")
+            return parsed
+        return [item.strip() for item in raw.split(",") if item.strip()]
+    return []
 
 
 class Settings(BaseSettings):
@@ -16,8 +37,8 @@ class Settings(BaseSettings):
     )
 
     bot_token: str = Field(default="", alias="BOT_TOKEN")
-    owner_ids: List[int] = Field(default_factory=list, alias="OWNER_IDS")
-    manager_chat_ids: List[int] = Field(default_factory=list, alias="MANAGER_CHAT_IDS")
+    owner_ids: Annotated[List[int], NoDecode] = Field(default_factory=list, alias="OWNER_IDS")
+    manager_chat_ids: Annotated[List[int], NoDecode] = Field(default_factory=list, alias="MANAGER_CHAT_IDS")
     database_url: str = Field(default="sqlite+aiosqlite:///:memory:", alias="DATABASE_URL")
     redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
     upstream_mode: str = Field(default="DEMO", alias="UPSTREAM_MODE")
@@ -45,7 +66,7 @@ class Settings(BaseSettings):
     llm_provider: str = Field(default="OFF", alias="LLM_PROVIDER")
     llm_timeout_seconds: int = Field(default=20, alias="LLM_TIMEOUT_SECONDS")
     llm_max_input_chars: int = Field(default=2000, alias="LLM_MAX_INPUT_CHARS")
-    llm_allowed_action_tools: List[str] = Field(
+    llm_allowed_action_tools: Annotated[List[str], NoDecode] = Field(
         default_factory=lambda: ["notify_team", "flag_order"], alias="LLM_ALLOWED_ACTION_TOOLS"
     )
     asr_timeout_sec: int = Field(default=20, alias="ASR_TIMEOUT_SEC")
@@ -70,35 +91,24 @@ class Settings(BaseSettings):
     @field_validator("owner_ids", mode="before")
     @classmethod
     def parse_owner_ids(cls, value: object) -> List[int]:
-        if isinstance(value, list):
-            return [int(v) for v in value]
-        if isinstance(value, str):
-            if not value.strip():
-                return []
-            return [int(v.strip()) for v in value.split(",") if v.strip()]
-        return []
+        return [int(v) for v in _parse_list_env(value)]
 
     @field_validator("manager_chat_ids", mode="before")
     @classmethod
     def parse_manager_chat_ids(cls, value: object) -> List[int]:
-        if isinstance(value, list):
-            return [int(v) for v in value]
-        if isinstance(value, str):
-            if not value.strip():
-                return []
-            return [int(v.strip()) for v in value.split(",") if v.strip()]
-        return []
+        return [int(v) for v in _parse_list_env(value)]
 
     @field_validator("llm_allowed_action_tools", mode="before")
     @classmethod
     def parse_llm_allowed_action_tools(cls, value: object) -> List[str]:
-        if isinstance(value, list):
-            return [str(v).strip() for v in value if str(v).strip()]
-        if isinstance(value, str):
-            if not value.strip():
-                return []
-            return [v.strip() for v in value.split(",") if v.strip()]
-        return []
+        return [str(v).strip() for v in _parse_list_env(value) if str(v).strip()]
+
+    @model_validator(mode="after")
+    def validate_owner_ids_for_non_demo(self) -> Settings:
+        mode = str(self.upstream_mode).strip().upper()
+        if mode != "DEMO" and not self.owner_ids:
+            raise ValueError("OWNER_IDS must be configured when UPSTREAM_MODE is not DEMO.")
+        return self
 
 
 @lru_cache
