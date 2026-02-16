@@ -7,19 +7,45 @@ import pytest
 from app.tools.contracts import ToolArtifact, ToolProvenance, ToolResponse
 
 
-class _DummyMessage:
+class _DummyPanel:
     def __init__(self) -> None:
-        self.from_user = SimpleNamespace(id=42)
-        self.text = None
-        self.bot = object()
-        self.answers = []
+        self.tracked = []
+        self.shown = []
 
-    async def answer(self, text: str, reply_markup=None):
-        self.answers.append((text, reply_markup))
+    async def track_transient(self, chat_id: int, message_id: int) -> None:
+        self.tracked.append((chat_id, message_id))
+
+    async def show_panel(self, message, text: str, *, inline_kb=None, mode="replace") -> None:
+        self.shown.append((text, mode))
+
+
+class _BotStub:
+    def __init__(self) -> None:
+        self.sent_docs = 0
+        self.sent_photos = 0
+        self.next_id = 100
+
+    async def send_document(self, **kwargs):
+        self.sent_docs += 1
+        self.next_id += 1
+        return SimpleNamespace(message_id=self.next_id)
+
+    async def send_photo(self, **kwargs):
+        self.sent_photos += 1
+        self.next_id += 1
+        return SimpleNamespace(message_id=self.next_id)
+
+
+class _DummyMessage:
+    def __init__(self, bot) -> None:
+        self.from_user = SimpleNamespace(id=42)
+        self.chat = SimpleNamespace(id=4242)
+        self.text = None
+        self.bot = bot
 
 
 @pytest.mark.asyncio
-async def test_template_run_sends_dashboard_pdf_artifact(monkeypatch) -> None:
+async def test_template_run_tracks_pdf_artifact(monkeypatch) -> None:
     from app.bot.routers import templates
 
     async def _resolve(**kwargs):
@@ -39,30 +65,16 @@ async def test_template_run_sends_dashboard_pdf_artifact(monkeypatch) -> None:
             provenance=ToolProvenance(sources=["biz_dashboard"], window={}),
         )
 
-    sent = {"doc": 0, "msg": 0}
+    panel = _DummyPanel()
+    bot = _BotStub()
 
-    class _Sender:
-        def __init__(self, bot):
-            self.bot = bot
-
-        async def _safe_send_document(self, *args, **kwargs):
-            sent["doc"] += 1
-            return True
-
-        async def _safe_send_message(self, *args, **kwargs):
-            sent["msg"] += 1
-            return True
-
-        async def _safe_send_photo(self, *args, **kwargs):
-            raise AssertionError("photo not expected")
-
+    monkeypatch.setattr("app.bot.routers.templates.get_panel_manager", lambda: panel)
     monkeypatch.setattr("app.bot.routers.templates.resolve_effective_mode", _resolve)
     monkeypatch.setattr("app.bot.routers.templates.choose_data_mode", _choose)
     monkeypatch.setattr("app.bot.routers.templates.get_redis", _redis)
     monkeypatch.setattr("app.bot.routers.templates.run_tool", _run_tool)
-    monkeypatch.setattr("app.bot.routers.templates.NotifyWorker", _Sender)
 
-    msg = _DummyMessage()
+    msg = _DummyMessage(bot)
     await templates._run_template_action(
         message=msg,
         owner_user_id=42,
@@ -70,12 +82,13 @@ async def test_template_run_sends_dashboard_pdf_artifact(monkeypatch) -> None:
         payload={"format": "pdf"},
     )
 
-    assert sent["doc"] == 1
-    assert sent["msg"] == 1
+    assert bot.sent_docs == 1
+    assert panel.tracked
+    assert panel.shown
 
 
 @pytest.mark.asyncio
-async def test_template_run_sends_ops_pdf_artifact(monkeypatch) -> None:
+async def test_template_run_tracks_png_artifact(monkeypatch) -> None:
     from app.bot.routers import templates
 
     async def _resolve(**kwargs):
@@ -90,41 +103,28 @@ async def test_template_run_sends_ops_pdf_artifact(monkeypatch) -> None:
     async def _run_tool(*args, **kwargs):
         return ToolResponse.ok(
             correlation_id="cid",
-            data={"message": "ops dashboard ready"},
-            artifacts=[ToolArtifact(type="pdf", filename="ops.pdf", content=b"%PDF-mock", caption="ops")],
+            data={"message": "chart ready"},
+            artifacts=[ToolArtifact(type="png", filename="dash.png", content=b"PNG", caption="chart")],
             provenance=ToolProvenance(sources=["biz_dashboard_ops"], window={}),
         )
 
-    sent = {"doc": 0, "msg": 0}
+    panel = _DummyPanel()
+    bot = _BotStub()
 
-    class _Sender:
-        def __init__(self, bot):
-            self.bot = bot
-
-        async def _safe_send_document(self, *args, **kwargs):
-            sent["doc"] += 1
-            return True
-
-        async def _safe_send_message(self, *args, **kwargs):
-            sent["msg"] += 1
-            return True
-
-        async def _safe_send_photo(self, *args, **kwargs):
-            raise AssertionError("photo not expected")
-
+    monkeypatch.setattr("app.bot.routers.templates.get_panel_manager", lambda: panel)
     monkeypatch.setattr("app.bot.routers.templates.resolve_effective_mode", _resolve)
     monkeypatch.setattr("app.bot.routers.templates.choose_data_mode", _choose)
     monkeypatch.setattr("app.bot.routers.templates.get_redis", _redis)
     monkeypatch.setattr("app.bot.routers.templates.run_tool", _run_tool)
-    monkeypatch.setattr("app.bot.routers.templates.NotifyWorker", _Sender)
 
-    msg = _DummyMessage()
+    msg = _DummyMessage(bot)
     await templates._run_template_action(
         message=msg,
         owner_user_id=42,
         spec=SimpleNamespace(tool_name="biz_dashboard_ops", presentation=None),
-        payload={"format": "pdf", "tz": "Europe/Berlin"},
+        payload={"format": "png"},
     )
 
-    assert sent["doc"] == 1
-    assert sent["msg"] == 1
+    assert bot.sent_photos == 1
+    assert panel.tracked
+    assert panel.shown

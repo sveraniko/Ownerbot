@@ -7,14 +7,18 @@ from aiogram.types import Message
 from app.bot.services.menu_entrypoints import show_help, show_tools
 from app.bot.ui.formatting import format_start_message
 from app.bot.ui.main_menu import build_main_menu_kb
+from app.bot.ui.panel_manager import get_panel_manager
 from app.core.db import check_db
 from app.core.redis import check_redis, get_redis
 from app.core.settings import get_settings
 from app.upstream.selector import resolve_effective_mode
 
 router = Router()
+
+
 @router.message(Command("start"))
 async def cmd_start(message: Message) -> None:
+    panel = get_panel_manager()
     settings = get_settings()
     db_ok = False
     redis_ok = False
@@ -48,7 +52,10 @@ async def cmd_start(message: Message) -> None:
         }
     )
     text += "\nУправление: /templates или кнопка 📚 Шаблоны"
-    await message.answer(text, reply_markup=build_main_menu_kb())
+
+    await panel.clear_panel(message.chat.id, bot=message.bot)
+    await panel.clear_transients(message.chat.id, bot=message.bot)
+    await panel.ensure_home(message, text, reply_kb=build_main_menu_kb())
 
 
 @router.message(Command("help"))
@@ -59,3 +66,11 @@ async def cmd_help(message: Message) -> None:
 @router.message(Command("tools"))
 async def cmd_tools(message: Message) -> None:
     await show_tools(message)
+
+
+@router.message(Command("clean"))
+async def cmd_clean(message: Message) -> None:
+    panel = get_panel_manager()
+    await panel.clear_panel(message.chat.id, bot=message.bot)
+    await panel.clear_transients(message.chat.id, bot=message.bot)
+    await panel.ensure_home(message, "OwnerBot online", reply_kb=build_main_menu_kb())

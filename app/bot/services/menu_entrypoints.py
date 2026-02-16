@@ -5,6 +5,7 @@ from aiogram.types import Message
 from app.bot.ui.formatting import format_tools_list
 from app.bot.ui.templates_keyboards import build_templates_main_keyboard
 from app.bot.ui.main_menu import build_main_menu_kb
+from app.bot.ui.panel_manager import get_panel_manager
 from app.core.logging import get_correlation_id
 from app.core.redis import get_redis
 from app.core.settings import get_settings
@@ -19,22 +20,31 @@ _STATE_KEY = "ownerbot:templates:state:"
 
 
 async def show_main_menu(message: Message) -> None:
-    await message.answer(
+    panel = get_panel_manager()
+    await panel.ensure_home(
+        message,
         "Главное меню OwnerBot. Выберите раздел кнопкой или используйте slash-команды.",
-        reply_markup=build_main_menu_kb(),
+        reply_kb=build_main_menu_kb(),
     )
 
 
 async def show_templates_home(message: Message) -> None:
+    panel = get_panel_manager()
     redis = await get_redis()
     await redis.delete(f"{_STATE_KEY}{message.from_user.id}")
-    await message.answer("Шаблоны", reply_markup=build_templates_main_keyboard())
+    await panel.show_panel(
+        message,
+        "Шаблоны",
+        inline_kb=build_templates_main_keyboard(),
+        mode="replace",
+    )
 
 
 async def show_systems(message: Message) -> None:
+    panel = get_panel_manager()
     settings = get_settings()
     if not settings.diagnostics_enabled:
-        await message.answer("Diagnostics disabled by config.")
+        await panel.show_panel(message, "Diagnostics disabled by config.", mode="replace")
         return
 
     try:
@@ -52,10 +62,11 @@ async def show_systems(message: Message) -> None:
             sis_client=sis_client,
         )
     )
-    await message.answer(format_diag_systems_report(report))
+    await panel.show_panel(message, format_diag_systems_report(report), mode="replace")
 
 
 async def show_upstream(message: Message) -> None:
+    panel = get_panel_manager()
     settings = get_settings()
     redis = await get_redis()
     effective_mode, runtime_mode = await resolve_effective_mode(settings=settings, redis=redis)
@@ -65,16 +76,19 @@ async def show_upstream(message: Message) -> None:
             cached_ping = "ok" if await redis.get(":auto_ping_ok") == "1" else "unknown"
         except Exception:
             cached_ping = "unknown"
-    await message.answer(
+    await panel.show_panel(
+        message,
         "Upstream state\n"
         f"effective: {effective_mode}\n"
         f"runtime_override: {runtime_mode or 'none'}\n"
         f"configured: {settings.upstream_mode}\n"
-        f"last_ping(auto): {cached_ping}"
+        f"last_ping(auto): {cached_ping}",
+        mode="replace",
     )
 
 
 async def show_help(message: Message) -> None:
+    panel = get_panel_manager()
     text = (
         "Примеры фраз:\n"
         "• дай KPI за вчера\n"
@@ -86,8 +100,9 @@ async def show_help(message: Message) -> None:
         "• план дозакупки\n"
         "• флагни заказ OB-1003 причина тест\n"
     )
-    await message.answer(text)
+    await panel.show_panel(message, text, mode="replace")
 
 
 async def show_tools(message: Message) -> None:
-    await message.answer(format_tools_list(registry.list_definitions()))
+    panel = get_panel_manager()
+    await panel.show_panel(message, format_tools_list(registry.list_definitions()), mode="replace")

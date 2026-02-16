@@ -5,6 +5,7 @@ from aiogram.filters import Command
 from aiogram.types import Message
 
 from app.bot.services.menu_entrypoints import show_systems
+from app.bot.ui.panel_manager import get_panel_manager
 from app.core.logging import get_correlation_id
 from app.core.redis import get_redis
 from app.core.settings import get_settings
@@ -22,9 +23,10 @@ async def cmd_systems(message: Message) -> None:
 
 @router.message(Command("shadow_check"))
 async def cmd_shadow_check(message: Message) -> None:
+    panel = get_panel_manager()
     settings = get_settings()
     if not settings.diagnostics_enabled or not settings.shadow_check_enabled:
-        await message.answer("Shadow check disabled by config.")
+        await panel.show_panel(message, "Shadow check disabled by config.", mode="replace")
         return
 
     try:
@@ -43,4 +45,4 @@ async def cmd_shadow_check(message: Message) -> None:
         ),
         presets=DEFAULT_SHADOW_PRESETS,
     )
-    await message.answer(format_shadow_report(report))
+    await panel.show_panel(message, format_shadow_report(report), mode="replace")

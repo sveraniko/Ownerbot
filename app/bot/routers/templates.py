@@ -15,11 +15,10 @@ from app.actions.capabilities import capability_support_status, get_sis_capabili
 from app.actions.confirm_flow import create_confirm_token
 from app.bot.filters.template_wizard_active import STATE_KEY_PREFIX, TemplateWizardActive
 from app.bot.keyboards.confirm import confirm_keyboard, confirm_keyboard_with_force
+from app.bot.ui.panel_manager import get_panel_manager
 from app.bot.services.action_force import requires_force_confirm
 from app.bot.services.action_preview import is_noop_preview
-from app.bot.services.menu_entrypoints import show_templates_home
 from app.bot.services.tool_runner import run_tool
-from app.bot.services.presentation import send_revenue_trend_png, send_weekly_pdf
 from app.bot.ui.formatting import detect_source_tag, format_tool_response
 from app.bot.ui.templates_keyboards import (
     build_input_presets_keyboard,
@@ -31,7 +30,6 @@ from app.core.contracts import CANCEL_CB_PREFIX, CONFIRM_CB_PREFIX
 from app.core.logging import get_correlation_id
 from app.core.redis import get_redis
 from app.core.settings import get_settings
-from app.core.tasks.notify_worker import NotifyWorker
 from app.templates.catalog import get_template_catalog
 from app.templates.catalog.parsers import parse_input_value
 from app.tools.contracts import ToolActor, ToolTenant
@@ -85,24 +83,28 @@ async def _clear_state(user_id: int) -> None:
 
 
 async def _prompt_current_step(message: Message, template_id: str, step_index: int) -> None:
+    panel = get_panel_manager()
     spec = get_template_catalog().get(template_id)
     step = spec.inputs[step_index]
     presets = step.presets or []
     if presets:
         markup = build_input_presets_keyboard(template_id, step_index, [(item.text, item.value) for item in presets])
-        await message.answer(step.prompt, reply_markup=markup)
+        await panel.show_panel(message, step.prompt, inline_kb=markup, mode="edit")
         return
-    await message.answer(step.prompt)
+    await panel.show_panel(message, step.prompt, mode="edit")
 
 
 @router.message(Command("templates"))
 async def cmd_templates(message: Message) -> None:
-    await show_templates_home(message)
+    panel = get_panel_manager()
+    await _clear_state(message.from_user.id)
+    await panel.show_panel(message, "Шаблоны", inline_kb=build_templates_main_keyboard(), mode="replace")
 
 
 @router.callback_query(F.data == "tpl:home")
 async def tpl_home(callback_query: CallbackQuery) -> None:
-    await callback_query.message.edit_text("Шаблоны", reply_markup=build_templates_main_keyboard())
+    panel = get_panel_manager()
+    await panel.show_panel(callback_query.message, "Шаблоны", inline_kb=build_templates_main_keyboard(), mode="edit")
     await callback_query.answer()
 
 
@@ -137,13 +139,16 @@ async def tpl_open_category(callback_query: CallbackQuery) -> None:
         await callback_query.answer()
         return
     category, page = parsed
-    await callback_query.message.edit_text(
+    panel = get_panel_manager()
+    await panel.show_panel(
+        callback_query.message,
         f"Шаблоны → {category_title(category)}",
-        reply_markup=build_templates_category_keyboard(
+        inline_kb=build_templates_category_keyboard(
             category,
             page=page,
             templates=await _visible_templates_for_category(category, correlation_id=get_correlation_id()),
         ),
+        mode="edit",
     )
     await callback_query.answer()
 
@@ -207,7 +212,7 @@ async def tpl_bump_input(message: Message) -> None:
         return
     raw = message.text.replace("/tpl_bump", "", 1).strip()
     if not raw:
-        await message.answer("Формат: /tpl_bump 10")
+        await get_panel_manager().show_panel(message, "Формат: /tpl_bump 10", mode="edit")
         return
     await _clear_state(message.from_user.id)
     spec = get_template_catalog().get("PRC_BUMP")
@@ -223,11 +228,11 @@ async def tpl_rate_set_input(message: Message) -> None:
         return
     state = await _get_state(message.from_user.id)
     if not state or state.get("template_id") != "PRC_FX_REPRICE" or state.get("step_index") != 2:
-        await message.answer("Нет активного FX шаблона. Запусти: /templates → Шаблоны → Цены → FX пересчёт цен")
+        await get_panel_manager().show_panel(message, "Нет активного FX шаблона. Запусти: /templates → Шаблоны → Цены → FX пересчёт цен", mode="edit")
         return
     raw = message.text.replace("/tpl_rate_set", "", 1).strip()
     if not raw:
-        await message.answer("Формат: /tpl_rate_set <hash>")
+        await get_panel_manager().show_panel(message, "Формат: /tpl_rate_set <hash>", mode="edit")
         return
 
     spec = get_template_catalog().get("PRC_FX_REPRICE")
@@ -263,7 +268,7 @@ async def _consume_step_value(message: Message, user_id: int, spec, step_index: 
     try:
         payload[step.key] = parse_input_value(step.parser, raw_value)
     except ValueError as exc:
-        await message.answer(str(exc))
+        await get_panel_manager().show_panel(message, str(exc), mode="edit")
         return
 
     next_index = step_index + 1
@@ -301,12 +306,11 @@ def _resolve_payload_tokens(value):
 
 
 async def _run_template_action(message: Message, owner_user_id: int, spec, payload: dict) -> None:
+    panel = get_panel_manager()
     if isinstance(spec, str):
         tool_name = spec
-        presentation = {}
     else:
         tool_name = spec.tool_name
-        presentation = spec.presentation or {}
     payload = _resolve_payload_tokens(payload)
     settings = get_settings()
     redis = await get_redis()
@@ -325,16 +329,6 @@ async def _run_template_action(message: Message, owner_user_id: int, spec, paylo
         ping_callable=_ping_failover,
     )
 
-    if presentation.get("kind") == "weekly_pdf":
-        await send_weekly_pdf(
-            message=message,
-            actor=actor,
-            tenant=tenant,
-            correlation_id=correlation_id,
-            registry=registry,
-        )
-        return
-
     response = await run_tool(
         tool_name,
         payload,
@@ -347,41 +341,32 @@ async def _run_template_action(message: Message, owner_user_id: int, spec, paylo
     )
 
     if response.status == "ok" and response.artifacts:
-        sender = NotifyWorker(message.bot)
         for artifact in response.artifacts:
             if artifact.type == "png":
-                await sender._safe_send_photo(owner_user_id, artifact.content, artifact.caption or "Dashboard PNG")
-                continue
-            if artifact.type == "pdf":
-                await sender._safe_send_document(owner_user_id, artifact.content, filename=artifact.filename, caption=artifact.caption or "Dashboard PDF")
-                continue
-            await message.answer_document(
-                BufferedInputFile(artifact.content, filename=artifact.filename),
-                caption=artifact.caption,
-            )
+                sent = await message.bot.send_photo(
+                    chat_id=message.chat.id,
+                    photo=BufferedInputFile(artifact.content, filename=artifact.filename),
+                    caption=artifact.caption or "Dashboard PNG",
+                )
+            else:
+                sent = await message.bot.send_document(
+                    chat_id=message.chat.id,
+                    document=BufferedInputFile(artifact.content, filename=artifact.filename),
+                    caption=artifact.caption,
+                )
+            await panel.track_transient(message.chat.id, sent.message_id)
 
         message_text = response.data.get("message") if isinstance(response.data, dict) else None
+        note = "Артефакт отправлен."
         if isinstance(message_text, str) and message_text.strip():
-            await sender._safe_send_message(owner_user_id, message_text)
-        return
-
-    if response.status == "ok" and presentation.get("kind") == "chart_png":
-        days = int(presentation.get("days", payload.get("days", 30)))
-        title = f"Revenue trend — последние {days} дней"
-        await send_revenue_trend_png(
-            message=message,
-            trend_response=response.data,
-            days=days,
-            title=title,
-            currency=tenant.currency,
-            timezone=tenant.timezone,
-        )
+            note = f"{note}\n\n{message_text}"
+        await panel.show_panel(message, note, inline_kb=build_templates_main_keyboard(), mode="edit")
         return
 
     if payload.get("dry_run") is True and response.status == "ok":
         if is_noop_preview(response):
             source_tag = detect_source_tag(response)
-            await message.answer(format_tool_response(response, source_tag=source_tag))
+            await panel.show_panel(message, format_tool_response(response, source_tag=source_tag), mode="edit")
             return
         payload_commit = dict(payload)
         payload_commit["dry_run"] = False
@@ -413,8 +398,9 @@ async def _run_template_action(message: Message, owner_user_id: int, spec, paylo
             kb = confirm_keyboard(f"{CONFIRM_CB_PREFIX}{token}", f"{CANCEL_CB_PREFIX}{token}")
 
         source_tag = detect_source_tag(response)
-        await message.answer(format_tool_response(response, source_tag=source_tag), reply_markup=kb)
+        await panel.show_panel(message, format_tool_response(response, source_tag=source_tag), inline_kb=kb, mode="edit")
         return
 
     source_tag = detect_source_tag(response)
-    await message.answer(format_tool_response(response, source_tag=source_tag))
+    await panel.show_panel(message, format_tool_response(response, source_tag=source_tag), mode="edit")
+
