@@ -66,17 +66,14 @@
 
 **Зачем бизнесу:** сокращает time-to-action владельца в первые 5 секунд.
 
-## Этап B — Quick Actions (операционное ядро)
-- Добавить slash алиасы:
-  - `/kpi` → `RPT_KPI_TODAY`
-  - `/kpi7` → `RPT_KPI_7D`
-  - `/stuck` → `ORD_STUCK`
-  - `/fx` → `PRC_FX_STATUS`
-  - `/digest` → `NTF_SEND_DIGEST_NOW`
-  - `/health` → `SYS_HEALTH`
-- Реализацию делать через существующий `_run_template_action`/registry, без новых bypass-путей.
+## Этап B — Section panels + anchor navigation
+✅ **Статус: IMPLEMENTED (OB-UI-02).**
+- Домашняя панель переведена на 6 owner-секций: Dashboard/Orders/Prices/Products/Notifications/Systems.
+- Навигация выполняется в одном anchor message через `edit_text` + inline keyboard (zero-spam меню).
+- В каждой секции добавлены quick actions (`tpl:run:*`) и переход в полный список категории (`tpl:cat:*`).
+- Панели `ui:tools` и `ui:upstream` остаются в anchor-потоке и не создают отдельные menu-сообщения.
 
-**Зачем бизнесу:** owner может управлять и кнопками, и muscle-memory командами.
+**Зачем бизнесу:** owner получает быстрый доступ к операционным действиям без засорения чата.
 
 ## Этап C — Role-focused dashboards
 - Собрать 3 curated экрана:

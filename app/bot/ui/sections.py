@@ -1,0 +1,126 @@
+from __future__ import annotations
+
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+from app.core.settings import get_settings
+
+
+def _with_home(rows: list[list[InlineKeyboardButton]]) -> InlineKeyboardMarkup:
+    rows.append([InlineKeyboardButton(text="🏠 Home", callback_data="ui:home")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def build_dashboard_panel() -> tuple[str, InlineKeyboardMarkup]:
+    text = (
+        "📊 Dashboard\n\n"
+        "• Бизнес-сводка и KPI\n"
+        "• Тренды выручки\n"
+        "• Регулярные weekly-отчёты\n"
+        "• Быстрый запуск ключевых отчётов"
+    )
+    keyboard = _with_home(
+        [
+            [InlineKeyboardButton(text="KPI вчера", callback_data="tpl:run:RPT_KPI_YESTERDAY")],
+            [InlineKeyboardButton(text="KPI 7 дней", callback_data="tpl:run:RPT_KPI_7D")],
+            [InlineKeyboardButton(text="Выручка тренд 30д (PNG)", callback_data="tpl:run:RPT_REVENUE_TREND_30D")],
+            [InlineKeyboardButton(text="Weekly PDF", callback_data="tpl:run:RPT_WEEKLY_PDF")],
+            [InlineKeyboardButton(text="Biz Dashboard daily (PNG)", callback_data="tpl:run:BIZ_DASHBOARD_DAILY_PNG")],
+            [InlineKeyboardButton(text="Все отчёты…", callback_data="tpl:cat:reports:p:0")],
+        ]
+    )
+    return text, keyboard
+
+
+def build_orders_panel() -> tuple[str, InlineKeyboardMarkup]:
+    text = "🧾 Orders\n\nОперации с заказами: контроль зависших, чатов и быстрый поиск."
+    keyboard = _with_home(
+        [
+            [InlineKeyboardButton(text="Зависшие заказы (summary)", callback_data="tpl:run:ORD_STUCK_LIST")],
+            [InlineKeyboardButton(text="Непрочитанные чаты (summary)", callback_data="tpl:run:TEAM_UNANSWERED_2H")],
+            [InlineKeyboardButton(text="Найти заказ по ID", callback_data="tpl:run:ORD_FIND_BY_ID")],
+            [InlineKeyboardButton(text="Последние заказы", callback_data="tpl:run:ORD_FIND_RECENT")],
+            [InlineKeyboardButton(text="Все шаблоны заказов…", callback_data="tpl:cat:orders:p:0")],
+        ]
+    )
+    return text, keyboard
+
+
+def build_prices_panel() -> tuple[str, InlineKeyboardMarkup]:
+    text = "💸 Prices (FX)\n\nКонтроль FX-режима, проверка настроек и репрайс."
+    keyboard = _with_home(
+        [
+            [InlineKeyboardButton(text="FX статус", callback_data="tpl:run:PRC_FX_STATUS")],
+            [InlineKeyboardButton(text="FX настройки", callback_data="tpl:run:PRC_FX_SETTINGS")],
+            [InlineKeyboardButton(text="FX репрайс", callback_data="tpl:run:PRC_FX_REPRICE")],
+            [InlineKeyboardButton(text="Авто FX", callback_data="tpl:run:PRC_FX_AUTO")],
+            [InlineKeyboardButton(text="Все цены…", callback_data="tpl:cat:prices:p:0")],
+        ]
+    )
+    return text, keyboard
+
+
+def build_products_panel() -> tuple[str, InlineKeyboardMarkup]:
+    text = "📦 Products\n\nКачество каталога и остатки: проверки карточек и инвентаря."
+    keyboard = _with_home(
+        [
+            [InlineKeyboardButton(text="Без цены", callback_data="tpl:run:PRD_NO_PRICE")],
+            [InlineKeyboardButton(text="Без фото", callback_data="tpl:run:PRD_NO_PHOTO")],
+            [InlineKeyboardButton(text="Low stock", callback_data="tpl:run:PRD_LOW_STOCK")],
+            [InlineKeyboardButton(text="Inventory status", callback_data="tpl:run:PRD_INVENTORY_STATUS")],
+            [InlineKeyboardButton(text="Все товары…", callback_data="tpl:cat:products:p:0")],
+        ]
+    )
+    return text, keyboard
+
+
+def build_notifications_panel() -> tuple[str, InlineKeyboardMarkup]:
+    text = "🔔 Notifications\n\nУправление дайджестами и подписками уведомлений."
+    keyboard = _with_home(
+        [
+            [InlineKeyboardButton(text="Статус уведомлений", callback_data="tpl:run:NTF_STATUS")],
+            [InlineKeyboardButton(text="Send digest now", callback_data="tpl:run:NTF_SEND_DIGEST_NOW")],
+            [InlineKeyboardButton(text="Send weekly now", callback_data="tpl:run:NTF_SEND_WEEKLY_NOW")],
+            [InlineKeyboardButton(text="Daily subscribe", callback_data="tpl:run:NTF_DAILY_DIGEST_SUBSCRIBE")],
+            [InlineKeyboardButton(text="Daily unsubscribe", callback_data="tpl:run:NTF_DAILY_DIGEST_UNSUBSCRIBE")],
+            [InlineKeyboardButton(text="FX delta subscribe", callback_data="tpl:run:NTF_FX_DELTA_SUBSCRIBE")],
+            [InlineKeyboardButton(text="FX delta unsubscribe", callback_data="tpl:run:NTF_FX_DELTA_UNSUBSCRIBE")],
+            [InlineKeyboardButton(text="Все уведомления…", callback_data="tpl:cat:notifications:p:0")],
+        ]
+    )
+    return text, keyboard
+
+
+def build_systems_panel() -> tuple[str, InlineKeyboardMarkup]:
+    text = "⚙️ Systems\n\nИнфраструктура, диагностика и служебные панели управления."
+    keyboard = _with_home(
+        [
+            [InlineKeyboardButton(text="Health", callback_data="tpl:run:SYS_HEALTH")],
+            [InlineKeyboardButton(text="Audit recent", callback_data="tpl:run:SYS_AUDIT_RECENT")],
+            [InlineKeyboardButton(text="Last errors", callback_data="tpl:run:SYS_LAST_ERRORS")],
+            [InlineKeyboardButton(text="SIS actions capabilities", callback_data="tpl:run:SYS_SIS_ACTIONS_CAPABILITIES")],
+            [InlineKeyboardButton(text="Onboard status", callback_data="tpl:run:SYS_ONBOARD_STATUS")],
+            [InlineKeyboardButton(text="🔌 Upstream panel", callback_data="ui:upstream")],
+            [InlineKeyboardButton(text="🧰 Tools panel", callback_data="ui:tools")],
+            [InlineKeyboardButton(text="📚 Templates", callback_data="ui:templates")],
+        ]
+    )
+    return text, keyboard
+
+
+def build_tools_panel() -> tuple[str, InlineKeyboardMarkup]:
+    settings = get_settings()
+    tools = settings.llm_allowed_action_tools
+    top = tools[:8]
+    text = (
+        "🧰 Tools\n\n"
+        f"allowed_action_tools: {len(tools)}\n"
+        f"Top {len(top)}:\n"
+        + ("\n".join(f"• {name}" for name in top) if top else "• none")
+    )
+    keyboard = _with_home(
+        [
+            [InlineKeyboardButton(text="Список полностью (JSON)", callback_data="tpl:run:ADV_EXPORT_JSON")],
+            [InlineKeyboardButton(text="⚙️ Systems", callback_data="ui:systems")],
+        ]
+    )
+    return text, keyboard

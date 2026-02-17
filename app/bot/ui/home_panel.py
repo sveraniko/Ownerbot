@@ -34,5 +34,6 @@ async def build_home_text() -> str:
         f"Owner IDs: {', '.join(str(x) for x in settings.owner_ids) or 'none'}\n"
         f"Upstream: cfg={settings.upstream_mode} / eff={effective_mode}\n"
         f"ASR: {settings.asr_provider} | LLM: {settings.llm_provider}\n"
-        f"SIS cfg: {'yes' if bool(settings.sis_base_url) else 'no'}"
+        f"SIS cfg: {'yes' if bool(settings.sis_base_url) else 'no'}\n\n"
+        "Навигация ниже (одно окно). /templates доступно в Systems."
     )
