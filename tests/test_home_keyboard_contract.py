@@ -10,8 +10,12 @@ def test_home_keyboard_callback_contract() -> None:
     assert isinstance(keyboard, InlineKeyboardMarkup)
     assert not isinstance(keyboard, ReplyKeyboardMarkup)
 
-    for row in keyboard.inline_keyboard:
-        for button in row:
-            assert button.callback_data is not None
-            assert button.callback_data.startswith("ui:")
-            assert len(button.callback_data.encode("utf-8")) <= 64
+    callback_data = [button.callback_data for row in keyboard.inline_keyboard for button in row]
+    assert callback_data == [
+        "ui:dash",
+        "ui:orders",
+        "ui:prices",
+        "ui:products",
+        "ui:notify",
+        "ui:systems",
+    ]
