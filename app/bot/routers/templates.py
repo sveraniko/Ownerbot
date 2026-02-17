@@ -19,6 +19,7 @@ from app.bot.services.action_preview import is_noop_preview
 from app.bot.services.tool_runner import run_tool
 from app.bot.services.presentation import send_revenue_trend_png, send_weekly_pdf
 from app.bot.ui.formatting import detect_source_tag, format_tool_response
+from app.bot.ui.anchor_panel import render_anchor_panel
 from app.bot.ui.templates_keyboards import (
     build_input_presets_keyboard,
     build_templates_category_keyboard,
@@ -96,7 +97,7 @@ async def _prompt_current_step(message: Message, template_id: str, step_index: i
 @router.message(Command("templates"))
 async def cmd_templates(message: Message) -> None:
     await _clear_state(message.from_user.id)
-    await message.answer("Шаблоны", reply_markup=build_templates_main_keyboard())
+    await render_anchor_panel(message, text="Шаблоны", reply_markup=build_templates_main_keyboard())
 
 
 @router.callback_query(F.data == "tpl:home")

@@ -31,6 +31,7 @@ def build_templates_main_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text=_label_for_category(category), callback_data=f"tpl:cat:{category}:p:0")]
         for category in catalog.list_categories()
     ]
+    rows.append([InlineKeyboardButton(text="🏠 Домой", callback_data="ui:home")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -53,6 +54,7 @@ def build_templates_category_keyboard(category: str, page: int = 0, templates=No
         rows.append(nav_row)
 
     rows.append([InlineKeyboardButton(text="Назад", callback_data="tpl:home")])
+    rows.append([InlineKeyboardButton(text="🏠 Домой", callback_data="ui:home")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
