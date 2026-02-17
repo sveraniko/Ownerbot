@@ -76,11 +76,13 @@
 **Зачем бизнесу:** owner получает быстрый доступ к операционным действиям без засорения чата.
 
 ## Этап C — Role-focused dashboards
-- Собрать 3 curated экрана:
-  1. **«Что горит»** (stuck + payment issues + unanswered + errors)
-  2. **«Деньги сегодня»** (KPI + trend + FX)
-  3. **«Риски склада»** (low stock + no photo/price + top movers)
-- Не добавлять новую бизнес-логику: только orchestration существующих tools + форматирование.
+✅ **Статус: IMPLEMENTED (OB-UI-03).**
+- В Dashboard добавлены 3 owner-friendly focus-экрана:
+  - 🔥 Что горит → `RPT_STUCK_ORDERS_SUMMARY`, `ORD_PAYMENT_ISSUES`, `RPT_UNANSWERED_CHATS_SUMMARY`, `SYS_LAST_ERRORS`.
+  - 💰 Деньги сегодня → `RPT_KPI_TODAY`, `RPT_KPI_YESTERDAY`, `RPT_REVENUE_TREND_30D_PNG`, `RPT_COMPARE_WOW`, `PRC_FX_STATUS`, `PRC_FX_AUTO`, `PRC_FX_REPRICE`.
+  - 📦 Риски склада → `PRD_INVENTORY_STATUS`, `PRD_LOW_STOCK`, `PRD_NO_PHOTO`, `PRD_NO_PRICE`, `RPT_TOP_PRODUCTS_7D`.
+- Все focus-панели работают как anchor-based edit-in-place (возврат через `⬅️ Dashboard` и `🏠 Home`).
+
 
 **Зачем бизнесу:** меньше когнитивной нагрузки, быстрее управленческие решения.
 

@@ -20,12 +20,86 @@ def build_dashboard_panel() -> tuple[str, InlineKeyboardMarkup]:
     )
     keyboard = _with_home(
         [
+            [InlineKeyboardButton(text="🔥 Что горит", callback_data="ui:focus:burn")],
+            [InlineKeyboardButton(text="💰 Деньги сегодня", callback_data="ui:focus:money")],
+            [InlineKeyboardButton(text="📦 Риски склада", callback_data="ui:focus:stock")],
             [InlineKeyboardButton(text="KPI вчера", callback_data="tpl:run:RPT_KPI_YESTERDAY")],
             [InlineKeyboardButton(text="KPI 7 дней", callback_data="tpl:run:RPT_KPI_7D")],
             [InlineKeyboardButton(text="Выручка тренд 30д (PNG)", callback_data="tpl:run:RPT_REVENUE_TREND_30D")],
             [InlineKeyboardButton(text="Weekly PDF", callback_data="tpl:run:RPT_WEEKLY_PDF")],
             [InlineKeyboardButton(text="Biz Dashboard daily (PNG)", callback_data="tpl:run:BIZ_DASHBOARD_DAILY_PNG")],
             [InlineKeyboardButton(text="Все отчёты…", callback_data="tpl:cat:reports:p:0")],
+        ]
+    )
+    return text, keyboard
+
+
+def build_focus_burn_panel() -> tuple[str, InlineKeyboardMarkup]:
+    text = (
+        "🔥 Что горит\n\n"
+        "• Зависшие и проблемные оплаты\n"
+        "• Чаты без ответа\n"
+        "• Последние ошибки/варнинги\n"
+        "• Быстрый запуск точечных проверок"
+    )
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Сводка зависших", callback_data="tpl:run:RPT_STUCK_ORDERS_SUMMARY")],
+            [InlineKeyboardButton(text="Проблемы оплаты", callback_data="tpl:run:ORD_PAYMENT_ISSUES")],
+            [InlineKeyboardButton(text="Чаты без ответа", callback_data="tpl:run:RPT_UNANSWERED_CHATS_SUMMARY")],
+            [InlineKeyboardButton(text="Последние ошибки/варнинги", callback_data="tpl:run:SYS_LAST_ERRORS")],
+            [
+                InlineKeyboardButton(text="⬅️ Dashboard", callback_data="ui:dash"),
+                InlineKeyboardButton(text="🏠 Home", callback_data="ui:home"),
+            ],
+        ]
+    )
+    return text, keyboard
+
+
+def build_focus_money_panel() -> tuple[str, InlineKeyboardMarkup]:
+    text = (
+        "💰 Деньги сегодня\n\n"
+        "• KPI и быстрый compare с вчера\n"
+        "• Тренд выручки и WoW\n"
+        "• FX статус/preview/apply в один экран"
+    )
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="KPI сегодня", callback_data="tpl:run:RPT_KPI_TODAY")],
+            [InlineKeyboardButton(text="KPI вчера", callback_data="tpl:run:RPT_KPI_YESTERDAY")],
+            [InlineKeyboardButton(text="Тренд 30д (PNG)", callback_data="tpl:run:RPT_REVENUE_TREND_30D_PNG")],
+            [InlineKeyboardButton(text="Сравнение WoW", callback_data="tpl:run:RPT_COMPARE_WOW")],
+            [InlineKeyboardButton(text="FX статус", callback_data="tpl:run:PRC_FX_STATUS")],
+            [InlineKeyboardButton(text="FX preview", callback_data="tpl:run:PRC_FX_AUTO")],
+            [InlineKeyboardButton(text="FX apply if needed", callback_data="tpl:run:PRC_FX_REPRICE")],
+            [
+                InlineKeyboardButton(text="⬅️ Dashboard", callback_data="ui:dash"),
+                InlineKeyboardButton(text="🏠 Home", callback_data="ui:home"),
+            ],
+        ]
+    )
+    return text, keyboard
+
+
+def build_focus_stock_panel() -> tuple[str, InlineKeyboardMarkup]:
+    text = (
+        "📦 Риски склада\n\n"
+        "• Остатки и health каталога\n"
+        "• Карточки без фото/цены\n"
+        "• Быстрый фокус на проблемные позиции"
+    )
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Inventory status", callback_data="tpl:run:PRD_INVENTORY_STATUS")],
+            [InlineKeyboardButton(text="Low stock", callback_data="tpl:run:PRD_LOW_STOCK")],
+            [InlineKeyboardButton(text="Без фото", callback_data="tpl:run:PRD_NO_PHOTO")],
+            [InlineKeyboardButton(text="Без цены", callback_data="tpl:run:PRD_NO_PRICE")],
+            [InlineKeyboardButton(text="Топ товаров 7д", callback_data="tpl:run:RPT_TOP_PRODUCTS_7D")],
+            [
+                InlineKeyboardButton(text="⬅️ Dashboard", callback_data="ui:dash"),
+                InlineKeyboardButton(text="🏠 Home", callback_data="ui:home"),
+            ],
         ]
     )
     return text, keyboard
