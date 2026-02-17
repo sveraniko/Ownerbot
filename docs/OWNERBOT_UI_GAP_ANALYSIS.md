@@ -56,6 +56,10 @@
 ## Рекомендация: реализация в 3 прагматичных этапа (без больших рисков)
 
 ## Этап A — Owner Home (минимальный риск, максимум ценности)
+✅ **Статус: IMPLEMENTED (OB-UI-01).**
+- Введён anchor-message подход: `/start`, `/menu`, `/templates` переиспользуют одно якорное сообщение.
+- UI переведён в inline-first для home панели и переходов, без reply keyboard.
+
 - Добавить `/menu` как alias к `/start`.
 - На `/start` показывать **inline owner-home** (6 кнопок proposal) + блок статусов (DB/Redis/effective upstream/last digest).
 - Кнопки верхнего уровня не исполняют tools напрямую, а открывают существующие template-категории/панели.

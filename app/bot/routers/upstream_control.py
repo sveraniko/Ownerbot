@@ -4,12 +4,10 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
+from app.bot.services.upstream_service import clear_runtime_override, get_upstream_snapshot, set_runtime_override
 from app.core.logging import get_correlation_id
-from app.core.redis import get_redis
 from app.core.settings import get_settings
 from app.tools.providers.sis_gateway import upstream_unavailable
-from app.upstream.mode_store import set_runtime_mode
-from app.upstream.selector import resolve_effective_mode
 from app.upstream.sis_client import SisClient
 
 router = Router()
@@ -40,28 +38,18 @@ async def cmd_sis_check(message: Message) -> None:
 
 @router.message(Command("upstream"))
 async def cmd_upstream(message: Message) -> None:
-    settings = get_settings()
-    redis = await get_redis()
-    effective_mode, runtime_mode = await resolve_effective_mode(settings=settings, redis=redis)
-    cached_ping = "n/a"
-    if effective_mode == "AUTO" or runtime_mode == "AUTO":
-        try:
-            cached_ping = "ok" if await redis.get(":auto_ping_ok") == "1" else "unknown"
-        except Exception:
-            cached_ping = "unknown"
+    state = await get_upstream_snapshot()
     await message.answer(
         "Upstream state\n"
-        f"effective: {effective_mode}\n"
-        f"runtime_override: {runtime_mode or 'none'}\n"
-        f"configured: {settings.upstream_mode}\n"
-        f"last_ping(auto): {cached_ping}"
+        f"effective: {state.effective_mode}\n"
+        f"runtime_override: {state.runtime_override or 'none'}\n"
+        f"configured: {state.configured_mode}\n"
+        f"last_ping(auto): {state.auto_ping}"
     )
 
 
 async def _set_mode(message: Message, mode: str) -> None:
-    settings = get_settings()
-    redis = await get_redis()
-    await set_runtime_mode(redis, settings.upstream_redis_key, mode)
+    await set_runtime_override(mode)
     await message.answer(f"Runtime upstream mode set to {mode}")
 
 
@@ -78,3 +66,9 @@ async def cmd_upstream_sis(message: Message) -> None:
 @router.message(Command("upstream_auto"))
 async def cmd_upstream_auto(message: Message) -> None:
     await _set_mode(message, "AUTO")
+
+
+@router.message(Command("upstream_clear"))
+async def cmd_upstream_clear(message: Message) -> None:
+    await clear_runtime_override()
+    await message.answer("Runtime upstream override cleared")
