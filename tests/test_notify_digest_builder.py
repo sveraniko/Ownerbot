@@ -7,7 +7,7 @@ from app.notify.digest_builder import build_daily_digest
 
 
 @pytest.mark.asyncio
-async def test_build_daily_digest_graceful_degradation(monkeypatch) -> None:
+async def test_build_daily_digest_graceful_degradation(monkeypatch, fixed_time_utc) -> None:
     monkeypatch.setattr("app.notify.digest_builder.kpi_compare.handle", AsyncMock(return_value=SimpleNamespace(status="error", data={})))
     monkeypatch.setattr("app.notify.digest_builder.revenue_trend.handle", AsyncMock(return_value=SimpleNamespace(status="ok", data={"series": []})))
     monkeypatch.setattr("app.notify.digest_builder.chats_unanswered.handle", AsyncMock(return_value=SimpleNamespace(status="error", data={})))
@@ -18,5 +18,5 @@ async def test_build_daily_digest_graceful_degradation(monkeypatch) -> None:
 
     bundle = await build_daily_digest(1, session=object(), correlation_id="cid")
     assert bundle.text
-    assert "Daily digest" in bundle.text
+    assert "Сводка за" in bundle.text
     assert bundle.warnings
