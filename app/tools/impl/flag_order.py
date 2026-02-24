@@ -33,7 +33,7 @@ async def handle(
     reason_value = payload.reason or ""
     provenance = ToolProvenance(
         sources=[f"ownerbot_demo_orders:{order.order_id}", "local_demo"],
-        window=None,
+        window={"scope": "demo_order", "type": "single"},
         filters_hash="demo",
     )
 

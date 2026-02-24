@@ -55,7 +55,7 @@ async def handle(payload: Payload, correlation_id: str, session) -> ToolResponse
         return ToolResponse.ok(
             correlation_id=correlation_id,
             data=preview,
-            provenance=ToolProvenance(sources=["ownerbot_demo_coupons", "local_demo"], filters_hash="create_coupon"),
+            provenance=ToolProvenance(sources=["ownerbot_demo_coupons", "local_demo"], filters_hash="create_coupon", window={"scope": "snapshot", "type": "snapshot"}),
         )
 
     if existing:
@@ -85,5 +85,5 @@ async def handle(payload: Payload, correlation_id: str, session) -> ToolResponse
     return ToolResponse.ok(
         correlation_id=correlation_id,
         data={"status": "committed", "operation": operation, "coupon_id": coupon_id, "code": code},
-        provenance=ToolProvenance(sources=["ownerbot_demo_coupons", "local_demo"], filters_hash="create_coupon"),
+        provenance=ToolProvenance(sources=["ownerbot_demo_coupons", "local_demo"], filters_hash="create_coupon", window={"scope": "snapshot", "type": "snapshot"}),
     )

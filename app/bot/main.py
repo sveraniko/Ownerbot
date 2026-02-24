@@ -7,7 +7,7 @@ from aiogram import Bot, Dispatcher
 
 from app.bot.middlewares.correlation import CorrelationMiddleware
 from app.bot.middlewares.owner_gate import OwnerGateMiddleware
-from app.bot.routers import actions, diagnostics, home_ui, owner_console, start, templates, upstream_control
+from app.bot.routers import actions, diagnostics, fx_settings, home_ui, owner_console, pagination, start, templates, upstream_control
 from app.core.logging import configure_logging
 from app.core.preflight import format_preflight_report, preflight_validate_settings
 from app.core.redis import get_redis
@@ -34,6 +34,8 @@ def build_dispatcher() -> Dispatcher:
     dispatcher.include_router(upstream_control.router)
     dispatcher.include_router(diagnostics.router)
     dispatcher.include_router(actions.router)
+    dispatcher.include_router(fx_settings.router)
+    dispatcher.include_router(pagination.router)
     return dispatcher
 
 

@@ -35,7 +35,7 @@ async def handle(
             message="MANAGER_CHAT_IDS is not set",
         )
 
-    provenance = ToolProvenance(sources=["ownerbot_config:MANAGER_CHAT_IDS", "local_ownerbot"])
+    provenance = ToolProvenance(sources=["ownerbot_config:MANAGER_CHAT_IDS", "local_ownerbot"], window={"scope": "snapshot", "type": "snapshot"})
     rendered_message = _render_message(payload.message, correlation_id, actor)
 
     if payload.dry_run:

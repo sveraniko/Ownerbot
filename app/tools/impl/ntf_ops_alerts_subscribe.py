@@ -49,5 +49,5 @@ async def handle(payload: Payload, correlation_id: str, session, actor: ToolActo
             "ops_alerts_cooldown_hours": settings.ops_alerts_cooldown_hours,
             "message": "Ops alerts включены.",
         },
-        provenance=ToolProvenance(sources=["owner_notify_settings"]),
+        provenance=ToolProvenance(sources=["owner_notify_settings"], window={"scope": "all_time", "type": "snapshot"}),
     )

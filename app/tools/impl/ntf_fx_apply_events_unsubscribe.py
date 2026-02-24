@@ -21,5 +21,5 @@ async def handle(payload: Payload, correlation_id: str, session, actor: ToolActo
             "fx_apply_events_enabled": settings.fx_apply_events_enabled,
             "message": "FX apply события выключены.",
         },
-        provenance=ToolProvenance(sources=["owner_notify_settings"]),
+        provenance=ToolProvenance(sources=["owner_notify_settings"], window={"scope": "all_time", "type": "snapshot"}),
     )

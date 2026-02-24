@@ -28,11 +28,10 @@ async def cmd_sis_check(message: Message) -> None:
         return
     data = response.data
     await message.answer(
-        "SIS ping: ok\n"
-        f"service: {data.get('service', 'n/a')}\n"
-        f"gateway: {data.get('gateway', 'n/a')}\n"
-        f"as_of: {response.as_of.isoformat()}\n"
-        f"filters_hash: {response.provenance.filters_hash or 'n/a'}"
+        "SIS пинг: ок\n"
+        f"сервис: {data.get('service', 'н/д')}\n"
+        f"шлюз: {data.get('gateway', 'н/д')}\n"
+        f"время: {response.as_of.isoformat()}"
     )
 
 
@@ -40,17 +39,17 @@ async def cmd_sis_check(message: Message) -> None:
 async def cmd_upstream(message: Message) -> None:
     state = await get_upstream_snapshot()
     await message.answer(
-        "Upstream state\n"
-        f"effective: {state.effective_mode}\n"
-        f"runtime_override: {state.runtime_override or 'none'}\n"
-        f"configured: {state.configured_mode}\n"
-        f"last_ping(auto): {state.auto_ping}"
+        "Источник данных\n"
+        f"фактически: {state.effective_mode}\n"
+        f"переопределение: {state.runtime_override or 'нет'}\n"
+        f"настроено: {state.configured_mode}\n"
+        f"посл. пинг: {state.auto_ping}"
     )
 
 
 async def _set_mode(message: Message, mode: str) -> None:
     await set_runtime_override(mode)
-    await message.answer(f"Runtime upstream mode set to {mode}")
+    await message.answer(f"Режим источника: {mode}")
 
 
 @router.message(Command("upstream_demo"))
@@ -71,4 +70,4 @@ async def cmd_upstream_auto(message: Message) -> None:
 @router.message(Command("upstream_clear"))
 async def cmd_upstream_clear(message: Message) -> None:
     await clear_runtime_override()
-    await message.answer("Runtime upstream override cleared")
+    await message.answer("Настройка источника сброшена")

@@ -66,7 +66,7 @@ async def handle(payload: Payload, correlation_id: str, session) -> ToolResponse
             data={"rows": [], "totals": {"total_revenue": 0.0, "total_qty": 0}},
             provenance=ToolProvenance(
                 sources=["ownerbot_demo_orders", "ownerbot_demo_order_items", "ownerbot_demo_products", "local_demo"],
-                window={"start": window_start.isoformat(), "end": now.isoformat(), "days": payload.days},
+                window={"scope": "products", "type": "rolling", "start": window_start.isoformat(), "end": now.isoformat(), "days": payload.days},
                 filters_hash=f"metric:{payload.metric};group_by:{payload.group_by};direction:{payload.direction}",
             ),
             warnings=warnings,
@@ -105,7 +105,7 @@ async def handle(payload: Payload, correlation_id: str, session) -> ToolResponse
     }
     provenance = ToolProvenance(
         sources=["ownerbot_demo_orders", "ownerbot_demo_order_items", "ownerbot_demo_products", "local_demo"],
-        window={"start": window_start.isoformat(), "end": now.isoformat(), "days": payload.days},
+        window={"scope": "products", "type": "rolling", "start": window_start.isoformat(), "end": now.isoformat(), "days": payload.days},
         filters_hash=f"metric:{payload.metric};group_by:{payload.group_by};direction:{payload.direction}",
     )
     return ToolResponse.ok(correlation_id=correlation_id, data={"rows": ranked, "totals": totals}, provenance=provenance)

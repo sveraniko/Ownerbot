@@ -51,5 +51,5 @@ async def handle(payload: Payload, correlation_id: str, session, actor: ToolActo
             "digest_quiet_send_on_errors": bool(settings.digest_quiet_send_on_errors),
             "message": "Правила quiet digest обновлены.",
         },
-        provenance=ToolProvenance(sources=["owner_notify_settings"]),
+        provenance=ToolProvenance(sources=["owner_notify_settings"], window={"scope": "all_time", "type": "snapshot"}),
     )

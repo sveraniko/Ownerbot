@@ -18,5 +18,5 @@ async def handle(payload: Payload, correlation_id: str, session, actor: ToolActo
     return ToolResponse.ok(
         correlation_id=correlation_id,
         data={"owner_id": actor.owner_user_id, "message": bundle.text, "warnings": bundle.warnings},
-        provenance=ToolProvenance(sources=["owner_notify_settings", "kpi_compare", "revenue_trend", "orders_search", "chats_unanswered"]),
+        provenance=ToolProvenance(sources=["owner_notify_settings", "kpi_compare", "revenue_trend", "orders_search", "chats_unanswered"], window={"scope": "7d", "type": "rolling"}),
     )

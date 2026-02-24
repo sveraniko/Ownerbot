@@ -58,7 +58,7 @@ async def handle(payload: Payload, correlation_id: str, session, actor: ToolActo
             )
 
         if payload.format == "png":
-            image = render_revenue_trend_png(bundle.series, "Daily revenue trend", f"tz={payload.tz}")
+            image = render_revenue_trend_png(bundle.series, "Выручка за день", f"tz={payload.tz}")
             return ToolResponse.ok(
                 correlation_id=correlation_id,
                 data={"owner_id": owner_id, "message": text, "warnings": bundle.warnings},

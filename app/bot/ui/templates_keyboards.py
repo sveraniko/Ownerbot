@@ -10,7 +10,7 @@ _CATEGORY_META = {
     "orders": ("🧾", "Заказы"),
     "team": ("👥", "Команда"),
     "systems": ("⚙️", "Системы"),
-    "advanced": ("🔧", "Advanced"),
+    "advanced": ("🔧", "Дополнительно"),
     "forecast": ("🔮", "Прогнозы"),
     "prices": ("💸", "Цены"),
     "products": ("📦", "Товары"),

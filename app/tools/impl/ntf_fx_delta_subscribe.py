@@ -37,4 +37,4 @@ async def handle(payload: Payload, correlation_id: str, session, actor: ToolActo
         "fx_delta_last_notified_rate": float(settings.fx_delta_last_notified_rate) if settings.fx_delta_last_notified_rate else None,
         "message": "FX delta уведомления включены.",
     }
-    return ToolResponse.ok(correlation_id=correlation_id, data=data, provenance=ToolProvenance(sources=["owner_notify_settings", "sis_fx_status"]))
+    return ToolResponse.ok(correlation_id=correlation_id, data=data, provenance=ToolProvenance(sources=["owner_notify_settings", "sis_fx_status"], window={"scope": "all_time", "type": "snapshot"}))

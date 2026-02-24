@@ -13,13 +13,13 @@ def build_trend_caption(response_data: dict, currency: str) -> str:
     delta = response_data.get("delta_vs_prev_window") or {}
     total_revenue = float(totals.get("revenue_gross", 0.0))
     delta_pct = delta.get("revenue_gross_pct")
-    delta_text = f"{delta_pct}%" if delta_pct is not None else "n/a"
-    generated_at = response_data.get("end_day", "n/a")
+    delta_text = f"{delta_pct}%" if delta_pct is not None else "н/д"
+    generated_at = response_data.get("end_day", "н/д")
     return (
-        f"Total revenue: {total_revenue:.2f} {currency}\n"
-        f"Delta vs prev window: {delta_text}\n"
-        f"Currency: {currency}\n"
-        f"generated_at: {generated_at}"
+        f"Выручка: {total_revenue:.2f} {currency}\n"
+        f"Изменение: {delta_text}\n"
+        f"Валюта: {currency}\n"
+        f"Дата: {generated_at}"
     )
 
 
@@ -90,5 +90,5 @@ async def send_weekly_pdf(*, message: Message, actor: ToolActor, tenant: ToolTen
     )
     await message.answer_document(
         BufferedInputFile(pdf_bytes, filename="weekly_report.pdf"),
-        caption="Weekly PDF report",
+        caption="Недельный отчёт (PDF)",
     )

@@ -31,5 +31,5 @@ async def handle(payload: Payload, correlation_id: str, session, actor: ToolActo
             "digest_quiet_max_silence_days": int(settings.digest_quiet_max_silence_days),
             "message": "Quiet daily digest включен.",
         },
-        provenance=ToolProvenance(sources=["owner_notify_settings"]),
+        provenance=ToolProvenance(sources=["owner_notify_settings"], window={"scope": "all_time", "type": "snapshot"}),
     )

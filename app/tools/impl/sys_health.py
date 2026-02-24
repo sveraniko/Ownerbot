@@ -17,7 +17,7 @@ async def handle(payload: Payload, correlation_id: str, session) -> ToolResponse
         return ToolResponse.ok(
             correlation_id=correlation_id,
             data={"status": "degraded", "reason": "SIS_BASE_URL is not configured"},
-            provenance=ToolProvenance(sources=["ownerbot_settings"]),
+            provenance=ToolProvenance(sources=["ownerbot_settings"], window={"scope": "snapshot", "type": "snapshot"}),
         )
 
     ping = await SisClient(settings).ping(correlation_id)
@@ -25,7 +25,7 @@ async def handle(payload: Payload, correlation_id: str, session) -> ToolResponse
         return ToolResponse.ok(
             correlation_id=correlation_id,
             data={"status": "ok", "sis_ping": "ok"},
-            provenance=ToolProvenance(sources=["sis:/ownerbot/v1/ping"]),
+            provenance=ToolProvenance(sources=["sis:/ownerbot/v1/ping"], window={"scope": "snapshot", "type": "snapshot"}),
         )
     return ToolResponse.ok(
         correlation_id=correlation_id,
@@ -35,5 +35,5 @@ async def handle(payload: Payload, correlation_id: str, session) -> ToolResponse
             "error_code": ping.error.code if ping.error else "UNKNOWN",
             "error_message": ping.error.message if ping.error else "unknown",
         },
-        provenance=ToolProvenance(sources=["sis:/ownerbot/v1/ping"]),
+        provenance=ToolProvenance(sources=["sis:/ownerbot/v1/ping"], window={"scope": "snapshot", "type": "snapshot"}),
     )

@@ -49,5 +49,5 @@ async def handle(payload: Payload, correlation_id: str, session, actor: ToolActo
             "escalation_max_repeats": int(settings.escalation_max_repeats),
             "message": "Escalation rules updated.",
         },
-        provenance=ToolProvenance(sources=["owner_notify_settings"]),
+        provenance=ToolProvenance(sources=["owner_notify_settings"], window={"scope": "all_time", "type": "snapshot"}),
     )

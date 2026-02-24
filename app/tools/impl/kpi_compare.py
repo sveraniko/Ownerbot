@@ -121,6 +121,8 @@ async def handle(payload: Payload, correlation_id: str, session) -> ToolResponse
             "local_demo",
         ],
         window={
+            "scope": "comparison",
+            "type": "rolling",
             "window_a": {"start": a_start.isoformat(), "end": a_end.isoformat()},
             "window_b": {"start": b_start.isoformat(), "end": b_end.isoformat()},
             "preset": payload.preset,

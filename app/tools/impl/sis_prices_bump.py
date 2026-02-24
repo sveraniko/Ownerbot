@@ -37,7 +37,7 @@ async def handle(payload: Payload, correlation_id: str, session, actor: ToolActo
                 ],
                 "note": "DEMO: no changes applied" if not payload.dry_run else "DEMO preview",
             },
-            provenance=ToolProvenance(sources=["local_demo:sis_prices_bump"], filters_hash="demo"),
+            provenance=ToolProvenance(sources=["local_demo:sis_prices_bump"], filters_hash="demo", window={"scope": "snapshot", "type": "snapshot"}),
         )
 
     endpoint = "/prices/bump/preview" if payload.dry_run else "/prices/bump/apply"

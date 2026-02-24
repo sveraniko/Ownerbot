@@ -23,7 +23,7 @@ async def handle(payload: Payload, correlation_id: str, session, actor: ToolActo
                 "summary": "DEMO: rollback simulated" if payload.dry_run else "DEMO: no changes applied",
                 "affected_count": 20,
             },
-            provenance=ToolProvenance(sources=["local_demo:sis_fx_rollback"], filters_hash="demo"),
+            provenance=ToolProvenance(sources=["local_demo:sis_fx_rollback"], filters_hash="demo", window={"scope": "snapshot", "type": "snapshot"}),
         )
 
     endpoint = "/reprice/rollback/preview" if payload.dry_run else "/reprice/rollback/apply"

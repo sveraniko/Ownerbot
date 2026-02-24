@@ -18,7 +18,7 @@ from app.bot.services.action_force import requires_force_confirm
 from app.bot.services.action_preview import is_noop_preview
 from app.bot.services.tool_runner import run_tool
 from app.bot.services.presentation import send_revenue_trend_png, send_weekly_pdf
-from app.bot.ui.formatting import detect_source_tag, format_tool_response
+from app.bot.ui.formatting import detect_source_tag, format_tool_response, format_tool_response_paginated
 from app.bot.ui.anchor_panel import render_anchor_panel
 from app.bot.ui.templates_keyboards import (
     build_input_presets_keyboard,
@@ -363,9 +363,7 @@ async def _run_template_action(message: Message, owner_user_id: int, spec, paylo
                 caption=artifact.caption,
             )
 
-        message_text = response.data.get("message") if isinstance(response.data, dict) else None
-        if isinstance(message_text, str) and message_text.strip():
-            await sender._safe_send_message(owner_user_id, message_text)
+        # Caption already contains the text - no need for separate message
         return
 
     if response.status == "ok" and presentation.get("kind") == "chart_png":
@@ -420,4 +418,5 @@ async def _run_template_action(message: Message, owner_user_id: int, spec, paylo
         return
 
     source_tag = detect_source_tag(response)
-    await message.answer(format_tool_response(response, source_tag=source_tag))
+    text, keyboard = await format_tool_response_paginated(response, source_tag=source_tag)
+    await message.answer(text, reply_markup=keyboard)

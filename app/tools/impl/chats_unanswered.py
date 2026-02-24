@@ -48,7 +48,7 @@ async def handle(payload: Payload, correlation_id: str, session) -> ToolResponse
     }
     provenance = ToolProvenance(
         sources=["ownerbot_demo_chat_threads", "local_demo"],
-        window=None,
+        window={"scope": "demo_chats", "type": "snapshot"},
         filters_hash=f"open:true;needs_reply:true;threshold_hours:{payload.threshold_hours}",
     )
     return ToolResponse.ok(correlation_id=correlation_id, data=data, provenance=provenance)

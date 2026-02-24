@@ -59,7 +59,7 @@ async def handle(
 
     provenance = ToolProvenance(
         sources=["local_ownerbot"],
-        window=None,
+        window={"scope": "demo_orders", "type": "bulk_action"},
         filters_hash="bulk_flag",
     )
 

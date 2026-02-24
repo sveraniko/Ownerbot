@@ -50,5 +50,9 @@ async def handle(payload: Payload, correlation_id: str, session) -> ToolResponse
     return ToolResponse.ok(
         correlation_id=correlation_id,
         data={"count": len(events), "events": events},
-        provenance=ToolProvenance(sources=["ownerbot_audit_events"], filters_hash=f"errors;limit:{payload.limit}"),
+        provenance=ToolProvenance(
+            sources=["ownerbot_audit_events"],
+            window={"scope": "audit_log", "type": "errors"},
+            filters_hash=f"errors;limit:{payload.limit}",
+        ),
     )

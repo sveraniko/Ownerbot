@@ -112,9 +112,9 @@ def _upstream_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="AUTO", callback_data="ui:upstream:set:AUTO"),
                 InlineKeyboardButton(text="SIS_HTTP", callback_data="ui:upstream:set:SIS_HTTP"),
             ],
-            [InlineKeyboardButton(text="Clear override", callback_data="ui:upstream:clear")],
-            [InlineKeyboardButton(text="⚙️ Systems", callback_data="ui:systems")],
-            [InlineKeyboardButton(text="🏠 Home", callback_data="ui:home")],
+            [InlineKeyboardButton(text="Сбросить", callback_data="ui:upstream:clear")],
+            [InlineKeyboardButton(text="⚙️ Настройки", callback_data="ui:systems")],
+            [InlineKeyboardButton(text="🏠 Главная", callback_data="ui:home")],
         ]
     )
 

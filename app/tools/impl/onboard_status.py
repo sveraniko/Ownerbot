@@ -36,5 +36,5 @@ async def handle(payload: Payload, correlation_id: str, session, actor: ToolActo
             "preset_suggestions": suggestions,
             "message": f"Onboarding status: {checklist['status'].upper()}",
         },
-        provenance=ToolProvenance(sources=["ownerbot_preflight", "owner_notify_settings", "sis_actions_capabilities"]),
+        provenance=ToolProvenance(sources=["ownerbot_preflight", "owner_notify_settings", "sis_actions_capabilities"], window={"scope": "all_time", "type": "snapshot"}),
     )

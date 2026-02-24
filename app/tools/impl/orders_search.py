@@ -148,7 +148,7 @@ async def handle(payload: OrdersSearchPayload, correlation_id: str, session) -> 
     }
     provenance = ToolProvenance(
         sources=["local_ownerbot"],
-        window=None,
+        window={"scope": "demo_orders", "type": "search"},
         filters_hash=_filters_hash(applied_filters),
     )
     return ToolResponse.ok(correlation_id=correlation_id, data=data, provenance=provenance)

@@ -27,6 +27,7 @@ async def handle(payload: Payload, correlation_id: str, session, actor: ToolActo
                 "orders_search",
                 "inventory_status",
                 "sis_fx_status",
-            ]
+            ],
+            window={"scope": "snapshot", "type": "snapshot"},
         ),
     )

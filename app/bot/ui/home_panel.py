@@ -29,11 +29,10 @@ async def build_home_text() -> str:
         effective_mode = settings.upstream_mode
 
     return (
-        "🏠 OwnerBot — Домой\n\n"
+        "🏠 OwnerBot\n\n"
         f"DB: {'✅' if db_ok else '❌'}  Redis: {'✅' if redis_ok else '❌'}\n"
-        f"Owner IDs: {', '.join(str(x) for x in settings.owner_ids) or 'none'}\n"
-        f"Upstream: cfg={settings.upstream_mode} / eff={effective_mode}\n"
-        f"ASR: {settings.asr_provider} | LLM: {settings.llm_provider}\n"
-        f"SIS cfg: {'yes' if bool(settings.sis_base_url) else 'no'}\n\n"
-        "Навигация ниже (одно окно). /templates доступно в Systems."
+        f"Владельцы: {', '.join(str(x) for x in settings.owner_ids) or 'нет'}\n"
+        f"Источник: настр={settings.upstream_mode} / факт={effective_mode}\n"
+        f"SIS: {'да' if bool(settings.sis_base_url) else 'нет'}\n\n"
+        "Навигация ниже."
     )

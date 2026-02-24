@@ -112,4 +112,4 @@ async def handle(payload: Payload, correlation_id: str, session, actor: ToolActo
             f"Escalation: {'on' if settings.escalation_enabled else 'off'} (stage1={int(settings.escalation_stage1_after_minutes)}m, repeat={int(settings.escalation_repeat_every_minutes)}m, max={int(settings.escalation_max_repeats)})"
         ),
     }
-    return ToolResponse.ok(correlation_id=correlation_id, data=data, provenance=ToolProvenance(sources=["owner_notify_settings"]))
+    return ToolResponse.ok(correlation_id=correlation_id, data=data, provenance=ToolProvenance(sources=["owner_notify_settings"], window={"scope": "all_time", "type": "snapshot"}))

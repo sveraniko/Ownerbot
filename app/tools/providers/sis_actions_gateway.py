@@ -33,7 +33,7 @@ def _extract_error_message(body: dict[str, Any] | None) -> str:
 def _provenance(path: str) -> ToolProvenance:
     return ToolProvenance(
         sources=["sis(ownerbot/v1/actions)"],
-        window={"endpoint": path},
+        window={"scope": "snapshot", "type": "snapshot", "endpoint": path},
         filters_hash="sis_actions",
     )
 

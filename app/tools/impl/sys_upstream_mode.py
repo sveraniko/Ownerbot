@@ -23,5 +23,5 @@ async def handle(payload: Payload, correlation_id: str, session) -> ToolResponse
             "runtime_mode": runtime_mode,
             "effective_mode": effective_mode,
         },
-        provenance=ToolProvenance(sources=["ownerbot_settings", "redis_runtime_toggle"]),
+        provenance=ToolProvenance(sources=["ownerbot_settings", "redis_runtime_toggle"], window={"scope": "snapshot", "type": "snapshot"}),
     )

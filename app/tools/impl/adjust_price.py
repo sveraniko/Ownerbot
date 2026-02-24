@@ -119,7 +119,7 @@ async def handle(payload: Payload, correlation_id: str, session) -> ToolResponse
                 "total_after": float(total_after.quantize(Decimal("0.01"))),
                 "rows": preview_rows,
             },
-            provenance=ToolProvenance(sources=["ownerbot_demo_products", "local_demo"], filters_hash="adjust_price"),
+            provenance=ToolProvenance(sources=["ownerbot_demo_products", "local_demo"], filters_hash="adjust_price", window={"scope": "snapshot", "type": "snapshot"}),
         )
 
     for row_data, row in zip(preview_rows, rows):
@@ -134,5 +134,5 @@ async def handle(payload: Payload, correlation_id: str, session) -> ToolResponse
             "affected_count": len(changed_rows),
             "rows": preview_rows[:10],
         },
-        provenance=ToolProvenance(sources=["ownerbot_demo_products", "local_demo"], filters_hash="adjust_price"),
+        provenance=ToolProvenance(sources=["ownerbot_demo_products", "local_demo"], filters_hash="adjust_price", window={"scope": "snapshot", "type": "snapshot"}),
     )

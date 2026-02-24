@@ -44,7 +44,7 @@ async def handle(payload: Payload, correlation_id: str, session) -> ToolResponse
         data={"count": len(items), "events": items},
         provenance=ToolProvenance(
             sources=["ownerbot_audit_events"],
-            window={"kind": "last_n", "limit": payload.limit},
+            window={"scope": "retrospective", "type": "last_n", "kind": "last_n", "limit": payload.limit},
             filters_hash="event_type:retrospective",
         ),
     )

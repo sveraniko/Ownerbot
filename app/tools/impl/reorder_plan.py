@@ -108,7 +108,7 @@ async def handle(payload: Payload, correlation_id: str, session) -> ToolResponse
         data=data,
         provenance=ToolProvenance(
             sources=["ownerbot_demo_orders", "ownerbot_demo_order_items", "ownerbot_demo_products", "local_demo"],
-            window={"from": start_day.isoformat(), "to": now.date().isoformat(), "history_days": payload.history_days},
+            window={"scope": "reorder", "type": "rolling", "from": start_day.isoformat(), "to": now.date().isoformat(), "history_days": payload.history_days},
             filters_hash="demo",
         ),
     )

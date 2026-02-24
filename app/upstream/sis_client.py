@@ -92,12 +92,22 @@ def _parse_envelope(payload: dict[str, Any], correlation_id: str) -> ToolRespons
     if "as_of" not in payload or "data" not in payload:
         return ToolResponse.fail(correlation_id=correlation_id, code="PROVENANCE_INCOMPLETE", message="SIS envelope is incomplete.")
 
+    # Ensure window has required scope and type fields
+    raw_window = provenance.get("window") or {}
+    if not isinstance(raw_window, dict):
+        raw_window = {}
+    window = {
+        "scope": raw_window.get("scope", "snapshot"),
+        "type": raw_window.get("type", "snapshot"),
+        **{k: v for k, v in raw_window.items() if k not in ("scope", "type")},
+    }
+
     return ToolResponse.ok(
         correlation_id=correlation_id,
         data=payload.get("data") or {},
         provenance=ToolProvenance(
             sources=[str(v) for v in provenance.get("sources") or []],
-            window=provenance.get("window"),
+            window=window,
             filters_hash=provenance.get("filters_hash"),
         ),
     )

@@ -36,7 +36,7 @@ async def handle(payload: Payload, correlation_id: str, session, actor: ToolActo
         return ToolResponse.ok(
             correlation_id=correlation_id,
             data={"owner_id": owner_id, "message": "Onboard test cooldown active. Try again later."},
-            provenance=ToolProvenance(sources=["redis", "onboarding_test_run"]),
+            provenance=ToolProvenance(sources=["redis", "onboarding_test_run"], window={"scope": "snapshot", "type": "snapshot"}),
         )
 
     acquired = await redis.set(lock_key, lock_token, ex=_LOCK_TTL_SECONDS, nx=True)
@@ -44,7 +44,7 @@ async def handle(payload: Payload, correlation_id: str, session, actor: ToolActo
         return ToolResponse.ok(
             correlation_id=correlation_id,
             data={"owner_id": owner_id, "message": "Onboard test already running. Try later."},
-            provenance=ToolProvenance(sources=["redis", "onboarding_test_run"]),
+            provenance=ToolProvenance(sources=["redis", "onboarding_test_run"], window={"scope": "snapshot", "type": "snapshot"}),
         )
 
     report: dict[str, object] = {"owner_id": owner_id, "steps": []}
@@ -115,7 +115,7 @@ async def handle(payload: Payload, correlation_id: str, session, actor: ToolActo
         return ToolResponse.ok(
             correlation_id=correlation_id,
             data=report,
-            provenance=ToolProvenance(sources=["sis_actions_capabilities", "ntf_send_digest_now", "notify_team", "redis"]),
+            provenance=ToolProvenance(sources=["sis_actions_capabilities", "ntf_send_digest_now", "notify_team", "redis"], window={"scope": "snapshot", "type": "snapshot"}),
         )
     finally:
         try:

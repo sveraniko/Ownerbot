@@ -21,5 +21,5 @@ async def handle(payload: Payload, correlation_id: str, session, actor: ToolActo
             "fx_delta_enabled": settings.fx_delta_enabled,
             "message": "FX delta уведомления выключены.",
         },
-        provenance=ToolProvenance(sources=["owner_notify_settings"]),
+        provenance=ToolProvenance(sources=["owner_notify_settings"], window={"scope": "all_time", "type": "snapshot"}),
     )

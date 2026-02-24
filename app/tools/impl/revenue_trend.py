@@ -105,7 +105,7 @@ async def handle(payload: Payload, correlation_id: str, session) -> ToolResponse
     }
     provenance = ToolProvenance(
         sources=[f"ownerbot_demo_kpi_daily:{start_day.isoformat()}..{end_day.isoformat()}", "local_demo"],
-        window={"start_day": start_day.isoformat(), "end_day": end_day.isoformat(), "days": payload.days},
+        window={"scope": "revenue", "type": "rolling", "start_day": start_day.isoformat(), "end_day": end_day.isoformat(), "days": payload.days},
         filters_hash="demo",
     )
     return ToolResponse.ok(correlation_id=correlation_id, data=data, provenance=provenance, warnings=warnings)

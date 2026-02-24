@@ -37,5 +37,5 @@ async def handle(payload: Payload, correlation_id: str, session, actor: ToolActo
             "digest_tz": settings.digest_tz,
             "message": "Ежедневный дайджест включен.",
         },
-        provenance=ToolProvenance(sources=["owner_notify_settings"]),
+        provenance=ToolProvenance(sources=["owner_notify_settings"], window={"scope": "all_time", "type": "snapshot"}),
     )

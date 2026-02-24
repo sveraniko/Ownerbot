@@ -74,7 +74,7 @@ async def handle(payload: Payload, correlation_id: str, session, actor: ToolActo
                 "note": "Requires confirmation",
                 "message": f"Preset {preset.title}: {len(diffs)} planned changes.",
             },
-            provenance=ToolProvenance(sources=["owner_notify_settings", "onboarding_presets"]),
+            provenance=ToolProvenance(sources=["owner_notify_settings", "onboarding_presets"], window={"scope": "all_time", "type": "snapshot"}),
         )
 
     await NotificationSettingsService.set_digest(
@@ -158,5 +158,5 @@ async def handle(payload: Payload, correlation_id: str, session, actor: ToolActo
             "diffs": diffs,
             "message": f"Preset {preset.title} applied.",
         },
-        provenance=ToolProvenance(sources=["owner_notify_settings", "onboarding_presets"]),
+        provenance=ToolProvenance(sources=["owner_notify_settings", "onboarding_presets"], window={"scope": "all_time", "type": "snapshot"}),
     )

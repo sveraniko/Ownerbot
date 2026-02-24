@@ -35,4 +35,4 @@ async def handle(payload: Payload, correlation_id: str, session, actor: ToolActo
         "fx_apply_events_cooldown_hours": settings.fx_apply_events_cooldown_hours,
         "message": "FX apply события включены.",
     }
-    return ToolResponse.ok(correlation_id=correlation_id, data=data, provenance=ToolProvenance(sources=["owner_notify_settings"]))
+    return ToolResponse.ok(correlation_id=correlation_id, data=data, provenance=ToolProvenance(sources=["owner_notify_settings"], window={"scope": "all_time", "type": "snapshot"}))

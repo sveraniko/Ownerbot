@@ -53,7 +53,7 @@ async def handle(payload: Payload, correlation_id: str, session, actor: ToolActo
                     {"id": "variant:312", "before": 42.0, "after": 46.0, "delta_pct": 9.5},
                 ],
             },
-            provenance=ToolProvenance(sources=["local_demo:sis_fx_reprice"], filters_hash="demo"),
+            provenance=ToolProvenance(sources=["local_demo:sis_fx_reprice"], filters_hash="demo", window={"scope": "snapshot", "type": "snapshot"}),
         )
 
     endpoint = "/reprice/preview" if payload.dry_run else "/reprice/apply"

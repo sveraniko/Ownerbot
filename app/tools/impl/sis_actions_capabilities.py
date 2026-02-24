@@ -44,7 +44,7 @@ async def handle(payload: Payload, correlation_id: str, session, actor=None) -> 
         },
         provenance=ToolProvenance(
             sources=["sis(ownerbot/v1/actions)"],
-            window={"endpoint": "capabilities_probe"},
+            window={"scope": "capabilities", "type": "snapshot", "endpoint": "capabilities_probe"},
             filters_hash="sis_actions_capabilities",
         ),
     )

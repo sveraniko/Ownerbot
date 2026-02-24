@@ -50,7 +50,7 @@ async def handle(payload: Payload, correlation_id: str, session, actor: ToolActo
                 "examples": [{"id": "product:101", "before": "ARCHIVED", "after": payload.target_status}],
                 "warnings": [],
             },
-            provenance=ToolProvenance(sources=["local_demo:sis_products_publish"], filters_hash="demo"),
+            provenance=ToolProvenance(sources=["local_demo:sis_products_publish"], filters_hash="demo", window={"scope": "snapshot", "type": "snapshot"}),
         )
 
     endpoint = "/products/publish/preview" if payload.dry_run else "/products/publish/apply"

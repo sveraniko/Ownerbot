@@ -110,15 +110,17 @@ async def build_daily_digest(owner_id: int, session, correlation_id: str, ops_sn
     wow_revenue = _fmt_pct(kpi_summary.get("revenue_net_wow_pct"))
     wow_orders = _fmt_pct(kpi_summary.get("orders_paid_wow_pct"))
     fx_rate = fx_summary.get("rate")
-    fx_line = f"💱 FX: {float(fx_rate):.4f} (would_apply={fx_summary.get('would_apply')})" if isinstance(fx_rate, (int, float)) else "💱 FX: N/A"
+    fx_would_apply = fx_summary.get("would_apply")
+    fx_apply_ru = "да" if fx_would_apply else "нет"
+    fx_line = f"💱 FX: {float(fx_rate):.4f} (пересчёт: {fx_apply_ru})" if isinstance(fx_rate, (int, float)) else "💱 FX: н/д"
 
     text = (
-        f"🗓 Daily digest {date.today().isoformat()}\n"
-        f"💰 Revenue net: {kpi_summary.get('revenue_net_sum', 0):.2f} (WoW {wow_revenue})\n"
-        f"🧾 Paid orders: {kpi_summary.get('orders_paid_sum', 0)} (WoW {wow_orders}), AOV: {kpi_summary.get('aov', 0):.2f}\n"
-        f"💬 Unanswered chats >2h: {ops_summary['unanswered_chats_2h']}\n"
-        f"📦 Stuck orders: {ops_summary['stuck_orders']} | low stock: {ops_summary['low_stock']} | OOS: {ops_summary['out_of_stock']}\n"
-        f"⚠️ Errors last 24h: {ops_summary['last_errors_count']}\n"
+        f"🗓 Сводка за {date.today().isoformat()}\n"
+        f"💰 Выручка: {kpi_summary.get('revenue_net_sum', 0):.2f} (нед/нед {wow_revenue})\n"
+        f"🧾 Заказов: {kpi_summary.get('orders_paid_sum', 0)} (нед/нед {wow_orders}), Ср.чек: {kpi_summary.get('aov', 0):.2f}\n"
+        f"💬 Чатов без ответа >2ч: {ops_summary['unanswered_chats_2h']}\n"
+        f"📦 Зависших: {ops_summary['stuck_orders']} | мало: {ops_summary['low_stock']} | нет: {ops_summary['out_of_stock']}\n"
+        f"⚠️ Ошибок 24ч: {ops_summary['last_errors_count']}\n"
         f"{fx_line}"
     )
     if warnings:
@@ -166,10 +168,10 @@ async def build_weekly_digest(owner_id: int, session, correlation_id: str) -> Di
     series = trend_res.data.get("series", []) if trend_res.status == "ok" else []
     window_a = kpi_summary.get("window_a") or {}
     text = (
-        f"📅 Weekly report ({window_a.get('start', 'n/a')}..{window_a.get('end', 'n/a')})\n"
-        f"Revenue net: {kpi_summary.get('revenue_net_sum', 0):.2f} ({_fmt_pct(kpi_summary.get('revenue_net_wow_pct'))} vs prev week)\n"
-        f"Orders paid: {kpi_summary.get('orders_paid_sum', 0)} ({_fmt_pct(kpi_summary.get('orders_paid_wow_pct'))}), AOV: {kpi_summary.get('aov', 0):.2f}\n"
-        f"Top issues: chats>2h={ops_summary['unanswered_chats_2h']}, stuck={ops_summary['stuck_orders']}, errors={ops_summary['last_errors_count']}"
+        f"📅 Недельный отчёт ({window_a.get('start', 'н/д')}..{window_a.get('end', 'н/д')})\n"
+        f"Выручка: {kpi_summary.get('revenue_net_sum', 0):.2f} ({_fmt_pct(kpi_summary.get('revenue_net_wow_pct'))} к пред. неделе)\n"
+        f"Заказов: {kpi_summary.get('orders_paid_sum', 0)} ({_fmt_pct(kpi_summary.get('orders_paid_wow_pct'))}), Ср.чек: {kpi_summary.get('aov', 0):.2f}\n"
+        f"Проблемы: чаты>2ч={ops_summary['unanswered_chats_2h']}, зависших={ops_summary['stuck_orders']}, ошибок={ops_summary['last_errors_count']}"
     )
     if warnings:
         text += "\n⚠️ " + "; ".join(warnings[:3])

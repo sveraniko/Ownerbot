@@ -37,5 +37,5 @@ async def handle(payload: Payload, correlation_id: str, session) -> ToolResponse
     return ToolResponse.ok(
         correlation_id=correlation_id,
         data={"total_active": len(active), "expiring_soon": len(expiring_soon), "top_active": top_active},
-        provenance=ToolProvenance(sources=["ownerbot_demo_coupons", "local_demo"], filters_hash="coupons_status"),
+        provenance=ToolProvenance(sources=["ownerbot_demo_coupons", "local_demo"], filters_hash="coupons_status", window={"scope": "snapshot", "type": "snapshot"}),
     )
