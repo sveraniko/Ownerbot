@@ -63,4 +63,5 @@ async def test_owner_console_advice_does_not_auto_run_tools(monkeypatch) -> None
 
     assert called["run_tool"] == 0
     assert msg.answers
+    assert msg.answers[-1][0].startswith("🧭")
     assert "Гипотезы" in msg.answers[-1][0]

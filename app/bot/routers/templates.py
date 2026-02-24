@@ -18,7 +18,7 @@ from app.bot.services.action_force import requires_force_confirm
 from app.bot.services.action_preview import is_noop_preview
 from app.bot.services.tool_runner import run_tool
 from app.bot.services.presentation import send_revenue_trend_png, send_weekly_pdf
-from app.bot.ui.formatting import detect_source_tag, format_tool_response, format_tool_response_paginated
+from app.bot.ui.formatting import detect_source_tag, format_tool_response_paginated, format_tool_response_with_quality
 from app.bot.ui.anchor_panel import render_anchor_panel
 from app.bot.ui.templates_keyboards import (
     build_input_presets_keyboard,
@@ -30,6 +30,7 @@ from app.core.contracts import CANCEL_CB_PREFIX, CONFIRM_CB_PREFIX
 from app.core.logging import get_correlation_id
 from app.core.redis import get_redis
 from app.core.settings import get_settings
+from app.core.audit import write_audit_event
 from app.core.tasks.notify_worker import NotifyWorker
 from app.templates.catalog import get_template_catalog
 from app.templates.catalog.parsers import parse_input_value
@@ -382,7 +383,10 @@ async def _run_template_action(message: Message, owner_user_id: int, spec, paylo
     if payload.get("dry_run") is True and response.status == "ok":
         if is_noop_preview(response):
             source_tag = detect_source_tag(response)
-            await message.answer(format_tool_response(response, source_tag=source_tag))
+            formatted_text, quality_payload = format_tool_response_with_quality(response, source_tag=source_tag, intent_source="TEMPLATE", tool_name=tool_name)
+            await message.answer(formatted_text)
+            await write_audit_event("quality_assessment", quality_payload, correlation_id=correlation_id)
+            await write_audit_event("tool_result_quality", quality_payload, correlation_id=correlation_id)
             return
         payload_commit = dict(payload)
         payload_commit["dry_run"] = False
@@ -414,9 +418,15 @@ async def _run_template_action(message: Message, owner_user_id: int, spec, paylo
             kb = confirm_keyboard(f"{CONFIRM_CB_PREFIX}{token}", f"{CANCEL_CB_PREFIX}{token}")
 
         source_tag = detect_source_tag(response)
-        await message.answer(format_tool_response(response, source_tag=source_tag), reply_markup=kb)
+        formatted_text, quality_payload = format_tool_response_with_quality(response, source_tag=source_tag, intent_source="TEMPLATE", tool_name=tool_name)
+        await message.answer(formatted_text, reply_markup=kb)
+        await write_audit_event("quality_assessment", quality_payload, correlation_id=correlation_id)
+        await write_audit_event("tool_result_quality", quality_payload, correlation_id=correlation_id)
         return
 
     source_tag = detect_source_tag(response)
+    quality_text, quality_payload = format_tool_response_with_quality(response, source_tag=source_tag, intent_source="TEMPLATE", tool_name=tool_name)
     text, keyboard = await format_tool_response_paginated(response, source_tag=source_tag)
-    await message.answer(text, reply_markup=keyboard)
+    await message.answer(f"{quality_text.splitlines()[0]}\n{text}", reply_markup=keyboard)
+    await write_audit_event("quality_assessment", quality_payload, correlation_id=correlation_id)
+    await write_audit_event("tool_result_quality", quality_payload, correlation_id=correlation_id)

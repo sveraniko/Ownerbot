@@ -5,6 +5,8 @@ from typing import Any
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from app.tools.contracts import ToolDefinition, ToolResponse
+from app.quality.models import QualityContext
+from app.quality.verifier import assess_tool_response, format_quality_header
 from app.bot.ui.presenters import detect_and_format
 from app.bot.ui.pagination import (
     build_pagination_keyboard,
@@ -80,6 +82,48 @@ def detect_source_tag(resp: ToolResponse) -> str | None:
         return DEMO_SOURCE_TAG
     return None
 
+
+
+
+def format_provenance_snippet(resp: ToolResponse) -> str | None:
+    provenance = resp.provenance
+    if provenance is None or not provenance.sources:
+        return None
+    sources = ", ".join(provenance.sources[:2])
+    window = provenance.window if isinstance(provenance.window, dict) else None
+    window_part = "-"
+    if window:
+        window_part = ", ".join(f"{k}:{v}" for k, v in list(window.items())[:2])
+    return f"Источник: {sources}; окно: {window_part}; as_of: {resp.as_of.isoformat()}"
+
+
+def format_tool_response_with_quality(
+    resp: ToolResponse,
+    *,
+    source_tag: str | None = None,
+    intent_source: str = "RULE",
+    tool_name: str | None = None,
+) -> tuple[str, dict[str, object]]:
+    badge = assess_tool_response(
+        resp,
+        QualityContext(intent_source=intent_source, intent_kind="TOOL", tool_name=tool_name),
+    )
+    lines = [format_quality_header(badge)]
+    snippet = format_provenance_snippet(resp)
+    if snippet:
+        lines.append(snippet)
+    lines.append(format_tool_response(resp, source_tag=source_tag))
+    payload = {
+        "intent_source": intent_source,
+        "intent_kind": "TOOL",
+        "tool_name": tool_name,
+        "confidence": badge.confidence,
+        "provenance": badge.provenance,
+        "warning_count": len(badge.warnings),
+        "top_warning_codes": badge.warnings[:3],
+        "correlation_id": resp.correlation_id,
+    }
+    return "\n".join(lines), payload
 
 def format_tool_response(resp: ToolResponse, *, source_tag: str | None = None) -> str:
     if resp.status == "error" and resp.error:

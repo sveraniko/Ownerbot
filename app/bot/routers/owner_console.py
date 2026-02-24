@@ -22,7 +22,7 @@ from app.bot.services.intent_router import route_intent
 from app.bot.services.retrospective import write_retrospective_event
 from app.bot.services.tool_runner import run_tool
 from app.bot.services.presentation import send_revenue_trend_png, send_weekly_pdf
-from app.bot.ui.formatting import detect_source_tag, format_tool_response
+from app.bot.ui.formatting import detect_source_tag, format_tool_response_with_quality
 from app.bot.ui.templates_keyboards import (
     build_templates_discounts_keyboard,
     build_templates_main_keyboard,
@@ -35,6 +35,8 @@ from app.core.redis import get_redis
 from app.core.settings import get_settings
 from app.core.audit import write_audit_event
 from app.llm.router import llm_plan_intent
+from app.quality.models import QualityContext
+from app.quality.verifier import assess_advice_intent, format_quality_header
 from app.tools.contracts import ToolActor, ToolProvenance, ToolResponse, ToolTenant
 from app.tools.providers.sis_gateway import run_sis_tool, upstream_unavailable
 from app.tools.registry_setup import build_registry
@@ -111,16 +113,34 @@ async def handle_tool_call(message: Message, text: str, *, input_kind: str = "te
             if advice is None:
                 await message.answer("Не смог подготовить рекомендации. /help")
                 return
-            lines = ["🧭 Гипотезы:"]
+            advice_for_quality = advice.model_copy(update={"confidence": llm_intent.confidence})
+            badge = assess_advice_intent(
+                advice_for_quality,
+                QualityContext(intent_source="LLM", intent_kind="ADVICE", tool_name=None),
+            )
+            lines = [format_quality_header(badge), "🧭 Гипотезы:"]
             lines.extend([f"• {item}" for item in advice.bullets[:5]])
             if advice.experiments:
                 lines.append("\n🔬 Эксперименты:")
                 lines.extend([f"• {item}" for item in advice.experiments[:5]])
+            if badge.warnings:
+                lines.append("\n⚠️ Проверка качества:")
+                lines.extend([f"• {item}" for item in badge.warnings[:3]])
             keyboard = await _build_advice_tools_keyboard(
                 owner_user_id=message.from_user.id,
                 suggested_tools=[tool.model_dump() for tool in advice.suggested_tools],
             )
             await message.answer("\n".join(lines), reply_markup=keyboard)
+            quality_payload = {
+                "intent_source": "LLM",
+                "intent_kind": llm_intent.intent_kind,
+                "tool_name": None,
+                "confidence": badge.confidence,
+                "provenance": badge.provenance,
+                "warning_count": len(badge.warnings),
+                "top_warning_codes": badge.warnings[:3],
+                "correlation_id": correlation_id,
+            }
             await write_audit_event(
                 "llm_intent_planned",
                 {
@@ -130,6 +150,8 @@ async def handle_tool_call(message: Message, text: str, *, input_kind: str = "te
                     "correlation_id": correlation_id,
                 },
             )
+            await write_audit_event("quality_assessment", quality_payload, correlation_id=correlation_id)
+            await write_audit_event("advice_quality", quality_payload, correlation_id=correlation_id)
             await write_retrospective_event(
                 correlation_id=correlation_id,
                 input_kind=input_kind,
@@ -240,7 +262,10 @@ async def handle_tool_call(message: Message, text: str, *, input_kind: str = "te
             registry=registry,
             intent_source=intent_source,
         )
-        await message.answer(format_tool_response(response, source_tag=source_tag if "source_tag" in locals() else None))
+        formatted_text, quality_payload = format_tool_response_with_quality(response, source_tag=source_tag if "source_tag" in locals() else None, intent_source=intent_source, tool_name=intent.tool)
+        await message.answer(formatted_text)
+        await write_audit_event("quality_assessment", quality_payload, correlation_id=correlation_id)
+        await write_audit_event("tool_result_quality", quality_payload, correlation_id=correlation_id)
         await write_retrospective_event(
             correlation_id=correlation_id,
             input_kind=input_kind,
@@ -367,7 +392,10 @@ async def handle_tool_call(message: Message, text: str, *, input_kind: str = "te
 
     if is_action and intent.payload.get("dry_run", False):
         if response.status == "error":
-            await message.answer(format_tool_response(response, source_tag=source_tag if "source_tag" in locals() else None))
+            formatted_text, quality_payload = format_tool_response_with_quality(response, source_tag=source_tag if "source_tag" in locals() else None, intent_source=intent_source, tool_name=intent.tool)
+            await message.answer(formatted_text)
+            await write_audit_event("quality_assessment", quality_payload, correlation_id=correlation_id)
+            await write_audit_event("tool_result_quality", quality_payload, correlation_id=correlation_id)
             await write_retrospective_event(
                 correlation_id=correlation_id,
                 input_kind=input_kind,
@@ -380,7 +408,10 @@ async def handle_tool_call(message: Message, text: str, *, input_kind: str = "te
             )
             return
         if is_noop_preview(response):
-            await message.answer(format_tool_response(response, source_tag=source_tag if "source_tag" in locals() else None))
+            formatted_text, quality_payload = format_tool_response_with_quality(response, source_tag=source_tag if "source_tag" in locals() else None, intent_source=intent_source, tool_name=intent.tool)
+            await message.answer(formatted_text)
+            await write_audit_event("quality_assessment", quality_payload, correlation_id=correlation_id)
+            await write_audit_event("tool_result_quality", quality_payload, correlation_id=correlation_id)
             await write_retrospective_event(
                 correlation_id=correlation_id,
                 input_kind=input_kind,
@@ -420,10 +451,13 @@ async def handle_tool_call(message: Message, text: str, *, input_kind: str = "te
             )
         else:
             markup = confirm_keyboard(f"{CONFIRM_CB_PREFIX}{token}", f"{CANCEL_CB_PREFIX}{token}")
+        formatted_text, quality_payload = format_tool_response_with_quality(response, source_tag=source_tag if "source_tag" in locals() else None, intent_source=intent_source, tool_name=intent.tool)
         await message.answer(
-            format_tool_response(response, source_tag=source_tag if "source_tag" in locals() else None),
+            formatted_text,
             reply_markup=markup,
         )
+        await write_audit_event("quality_assessment", quality_payload, correlation_id=correlation_id)
+        await write_audit_event("tool_result_quality", quality_payload, correlation_id=correlation_id)
         await write_retrospective_event(
             correlation_id=correlation_id,
             input_kind=input_kind,
@@ -436,7 +470,10 @@ async def handle_tool_call(message: Message, text: str, *, input_kind: str = "te
         )
         return
 
-    await message.answer(format_tool_response(response, source_tag=source_tag if "source_tag" in locals() else None))
+    formatted_text, quality_payload = format_tool_response_with_quality(response, source_tag=source_tag if "source_tag" in locals() else None, intent_source=intent_source, tool_name=intent.tool)
+    await message.answer(formatted_text)
+    await write_audit_event("quality_assessment", quality_payload, correlation_id=correlation_id)
+    await write_audit_event("tool_result_quality", quality_payload, correlation_id=correlation_id)
     await write_retrospective_event(
         correlation_id=correlation_id,
         input_kind=input_kind,
@@ -524,7 +561,10 @@ async def run_advice_suggested_tool(callback_query: CallbackQuery) -> None:
         registry=registry,
         intent_source="LLM",
     )
-    await callback_query.message.answer(format_tool_response(response))
+    formatted_text, quality_payload = format_tool_response_with_quality(response, intent_source="LLM", tool_name=tool_name)
+    await callback_query.message.answer(formatted_text)
+    await write_audit_event("quality_assessment", quality_payload, correlation_id=correlation_id)
+    await write_audit_event("tool_result_quality", quality_payload, correlation_id=correlation_id)
     await callback_query.answer()
 
 @router.message(Command("flag"))

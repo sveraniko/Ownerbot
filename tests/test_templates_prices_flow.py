@@ -51,7 +51,8 @@ async def test_template_flow_dry_run_creates_force_confirm_buttons(monkeypatch) 
     msg = _DummyMessage()
     await templates._run_template_action(msg, 42, "sis_fx_reprice", {"dry_run": True, "rate_set_id": "h", "input_currency": "USD", "shop_currency": "EUR"})
 
-    _, markup = msg.calls[0]
+    text, markup = msg.calls[0]
+    assert text.startswith("🧭")
     flat = [b.text for row in markup.inline_keyboard for b in row]
     assert "✅ Применить" in flat
     assert "⚠️ Применить несмотря на аномалию" in flat
@@ -86,7 +87,8 @@ async def test_template_flow_dry_run_default_confirm_button(monkeypatch) -> None
     msg = _DummyMessage()
     await templates._run_template_action(msg, 42, "sis_prices_bump", {"dry_run": True, "bump_percent": "10"})
 
-    _, markup = msg.calls[0]
+    text, markup = msg.calls[0]
+    assert text.startswith("🧭")
     flat = [b.text for row in markup.inline_keyboard for b in row]
     assert "✅ Подтвердить" in flat
 
@@ -120,7 +122,8 @@ async def test_template_flow_dry_run_noop_skips_confirm(monkeypatch) -> None:
     msg = _DummyMessage()
     await templates._run_template_action(msg, 42, "sis_fx_reprice_auto", {"dry_run": True})
 
-    _, markup = msg.calls[0]
+    text, markup = msg.calls[0]
+    assert text.startswith("🧭")
     assert markup is None
 
 
