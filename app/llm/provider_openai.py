@@ -34,13 +34,35 @@ class OpenAIPlanner:
                         "type": "object",
                         "additionalProperties": False,
                         "properties": {
+                            "intent_kind": {"type": "string", "enum": ["TOOL", "ADVICE", "UNKNOWN"]},
                             "tool": {"type": ["string", "null"]},
                             "payload": {"type": "object", "additionalProperties": True},
                             "presentation": {"type": ["object", "null"], "additionalProperties": True},
+                            "advice": {
+                                "type": ["object", "null"],
+                                "additionalProperties": False,
+                                "properties": {
+                                    "bullets": {"type": "array", "items": {"type": "string"}},
+                                    "experiments": {"type": "array", "items": {"type": "string"}},
+                                    "suggested_tools": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "additionalProperties": False,
+                                            "properties": {
+                                                "tool": {"type": "string"},
+                                                "payload": {"type": "object", "additionalProperties": True}
+                                            },
+                                            "required": ["tool", "payload"]
+                                        }
+                                    }
+                                },
+                                "required": ["bullets", "experiments", "suggested_tools"]
+                            },
                             "error_message": {"type": ["string", "null"]},
                             "confidence": {"type": "number", "minimum": 0, "maximum": 1},
                         },
-                        "required": ["tool", "payload", "presentation", "error_message", "confidence"],
+                        "required": ["intent_kind", "tool", "payload", "presentation", "advice", "error_message", "confidence"],
                     },
                 }
             },

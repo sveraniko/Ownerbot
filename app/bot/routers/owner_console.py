@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import re
 import time
@@ -7,7 +8,7 @@ import uuid
 
 from aiogram import F, Router
 from aiogram.filters import Command
-from aiogram.types import Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from app.actions.confirm_flow import create_confirm_token
 from app.asr.audio_convert import convert_ogg_to_wav
@@ -43,6 +44,21 @@ from app.upstream.sis_client import SisClient
 router = Router()
 logger = logging.getLogger(__name__)
 registry = build_registry()
+_ADVICE_TOOL_PREFIX = "llm:advice_tool:"
+
+
+async def _build_advice_tools_keyboard(owner_user_id: int, suggested_tools: list[dict]) -> InlineKeyboardMarkup | None:
+    if not suggested_tools:
+        return None
+    redis = await get_redis()
+    rows = []
+    for index, item in enumerate(suggested_tools[:3], start=1):
+        token = str(uuid.uuid4())
+        payload = {"owner_user_id": owner_user_id, "tool": item.get("tool"), "payload": item.get("payload") or {}}
+        await redis.set(f"{_ADVICE_TOOL_PREFIX}{token}", json.dumps(payload), ex=900)
+        rows.append([InlineKeyboardButton(text=f"Проверить данными #{index}", callback_data=f"{_ADVICE_TOOL_PREFIX}{token}")])
+    rows.append([InlineKeyboardButton(text="🏠 Главная", callback_data="ui:home")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 async def _send_weekly_pdf(message: Message, actor: ToolActor, tenant: ToolTenant, correlation_id: str) -> None:
@@ -90,6 +106,46 @@ async def handle_tool_call(message: Message, text: str, *, input_kind: str = "te
             )
             return
 
+        if llm_intent.intent_kind == "ADVICE":
+            advice = llm_intent.advice
+            if advice is None:
+                await message.answer("Не смог подготовить рекомендации. /help")
+                return
+            lines = ["🧭 Гипотезы:"]
+            lines.extend([f"• {item}" for item in advice.bullets[:5]])
+            if advice.experiments:
+                lines.append("\n🔬 Эксперименты:")
+                lines.extend([f"• {item}" for item in advice.experiments[:5]])
+            keyboard = await _build_advice_tools_keyboard(
+                owner_user_id=message.from_user.id,
+                suggested_tools=[tool.model_dump() for tool in advice.suggested_tools],
+            )
+            await message.answer("\n".join(lines), reply_markup=keyboard)
+            await write_audit_event(
+                "llm_intent_planned",
+                {
+                    "intent_kind": llm_intent.intent_kind,
+                    "confidence": llm_intent.confidence,
+                    "provider": provider,
+                    "correlation_id": correlation_id,
+                },
+            )
+            await write_retrospective_event(
+                correlation_id=correlation_id,
+                input_kind=input_kind,
+                text=text,
+                intent_source="LLM",
+                llm_confidence=llm_intent.confidence,
+                tool_name="advice",
+                response=ToolResponse.ok(
+                    correlation_id=correlation_id,
+                    data={"intent_kind": "ADVICE"},
+                    provenance=ToolProvenance(sources=["llm:advisor"], window={}),
+                ),
+                artifacts=[],
+            )
+            return
+
         if llm_intent.tool is None:
             if provider != "OFF":
                 await write_audit_event(
@@ -121,6 +177,7 @@ async def handle_tool_call(message: Message, text: str, *, input_kind: str = "te
             "llm_intent_planned",
             {
                 "tool": llm_intent.tool,
+                "intent_kind": llm_intent.intent_kind,
                 "confidence": llm_intent.confidence,
                 "provider": provider,
                 "correlation_id": correlation_id,
@@ -181,6 +238,7 @@ async def handle_tool_call(message: Message, text: str, *, input_kind: str = "te
             ),
             correlation_id=correlation_id,
             registry=registry,
+            intent_source=intent_source,
         )
         await message.answer(format_tool_response(response, source_tag=source_tag if "source_tag" in locals() else None))
         await write_retrospective_event(
@@ -239,6 +297,7 @@ async def handle_tool_call(message: Message, text: str, *, input_kind: str = "te
             correlation_id=correlation_id,
             idempotency_key=idempotency_key,
             registry=registry,
+            intent_source=intent_source,
         )
         source_tag = detect_source_tag(response)
     else:
@@ -434,6 +493,39 @@ async def _handle_voice_templates_shortcut(message: Message, transcript: str) ->
     await write_audit_event("voice.route", {"selected_path": "templates", "template_menu": route})
     await message.answer(text, reply_markup=markup)
     return True
+
+
+
+@router.callback_query(F.data.startswith(_ADVICE_TOOL_PREFIX))
+async def run_advice_suggested_tool(callback_query: CallbackQuery) -> None:
+    if callback_query.data is None:
+        return
+    token = callback_query.data.replace(_ADVICE_TOOL_PREFIX, "", 1)
+    redis = await get_redis()
+    raw = await redis.get(f"{_ADVICE_TOOL_PREFIX}{token}")
+    if not raw:
+        await callback_query.answer("Рекомендация устарела", show_alert=True)
+        return
+    data = json.loads(raw)
+    if int(data.get("owner_user_id", 0)) != int(callback_query.from_user.id):
+        await callback_query.answer("Недоступно", show_alert=True)
+        return
+    await redis.delete(f"{_ADVICE_TOOL_PREFIX}{token}")
+    tool_name = str(data.get("tool") or "")
+    payload = dict(data.get("payload") or {})
+    correlation_id = get_correlation_id()
+    response = await run_tool(
+        tool_name,
+        payload,
+        callback_query=callback_query,
+        actor=ToolActor(owner_user_id=callback_query.from_user.id),
+        tenant=ToolTenant(project="OwnerBot", shop_id="shop_001", currency="EUR", timezone="Europe/Berlin", locale="ru-RU"),
+        correlation_id=correlation_id,
+        registry=registry,
+        intent_source="LLM",
+    )
+    await callback_query.message.answer(format_tool_response(response))
+    await callback_query.answer()
 
 @router.message(Command("flag"))
 async def handle_flag_command(message: Message) -> None:
