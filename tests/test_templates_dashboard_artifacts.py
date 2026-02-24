@@ -17,6 +17,9 @@ class _DummyMessage:
     async def answer(self, text: str, reply_markup=None):
         self.answers.append((text, reply_markup))
 
+    async def answer_document(self, *args, **kwargs):
+        self.answers.append(("document", kwargs))
+
 
 @pytest.mark.asyncio
 async def test_template_run_sends_dashboard_pdf_artifact(monkeypatch) -> None:
@@ -39,7 +42,7 @@ async def test_template_run_sends_dashboard_pdf_artifact(monkeypatch) -> None:
             provenance=ToolProvenance(sources=["biz_dashboard"], window={}),
         )
 
-    sent = {"doc": 0, "msg": 0}
+    sent = {"doc": 0, "msg": 0, "answer": 0}
 
     class _Sender:
         def __init__(self, bot):
@@ -71,7 +74,8 @@ async def test_template_run_sends_dashboard_pdf_artifact(monkeypatch) -> None:
     )
 
     assert sent["doc"] == 1
-    assert sent["msg"] == 1
+    assert sent["msg"] == 0
+    assert sent["answer"] == 0
 
 
 @pytest.mark.asyncio
@@ -95,7 +99,7 @@ async def test_template_run_sends_ops_pdf_artifact(monkeypatch) -> None:
             provenance=ToolProvenance(sources=["biz_dashboard_ops"], window={}),
         )
 
-    sent = {"doc": 0, "msg": 0}
+    sent = {"doc": 0, "msg": 0, "answer": 0}
 
     class _Sender:
         def __init__(self, bot):
@@ -127,4 +131,5 @@ async def test_template_run_sends_ops_pdf_artifact(monkeypatch) -> None:
     )
 
     assert sent["doc"] == 1
-    assert sent["msg"] == 1
+    assert sent["msg"] == 0
+    assert sent["answer"] == 0

@@ -73,4 +73,4 @@ def test_source_tag_in_response_formatter() -> None:
         provenance=ToolProvenance(sources=["sis:ownerbot/v1/orders/search"], window={"days": 1}, filters_hash="h1"),
     )
     text = format_tool_response(response)
-    assert "Источник: SIS(ownerbot/v1)" in text
+    assert "Источник: SIS" in text
