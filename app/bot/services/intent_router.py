@@ -4,6 +4,8 @@ import re
 from dataclasses import dataclass
 from datetime import date, timedelta
 
+from app.agent_actions.phrase_pack import match_action_phrase
+
 
 @dataclass
 class IntentResult:
@@ -11,6 +13,7 @@ class IntentResult:
     payload: dict
     presentation: dict | None = None
     error_message: str | None = None
+    source: str = "RULE"
 
 
 def extract_order_id(text: str) -> str | None:
@@ -37,6 +40,14 @@ def extract_reason_after_keywords(text: str, keywords: list[str] | None = None) 
 
 def route_intent(text: str) -> IntentResult:
     normalized = text.lower().strip()
+
+    phrase_match = match_action_phrase(text)
+    if phrase_match is not None:
+        return IntentResult(
+            tool=phrase_match.tool_name,
+            payload=phrase_match.payload_partial,
+            source="RULE_PHRASE_PACK",
+        )
 
     trend_command_match = re.match(r"^/trend(?:@\w+)?(?:\s+(\d{1,2}))?\s*$", text.strip(), flags=re.IGNORECASE)
     if trend_command_match:
