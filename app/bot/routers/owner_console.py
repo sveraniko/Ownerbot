@@ -11,6 +11,8 @@ from aiogram.filters import Command
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from app.actions.confirm_flow import create_confirm_token
+from app.actions.capabilities import capability_support_status, get_sis_capabilities, required_capabilities_for_tool
+from app.agent_actions.param_coercion import coerce_action_payload
 from app.asr.audio_convert import convert_ogg_to_wav
 from app.asr.cache import get_or_transcribe
 from app.asr.errors import ASRError
@@ -71,6 +73,15 @@ async def _send_weekly_pdf(message: Message, actor: ToolActor, tenant: ToolTenan
         correlation_id=correlation_id,
         registry=registry,
     )
+
+
+def _compose_action_preview_text(formatted_text: str, tool_name: str, response: ToolResponse) -> str:
+    lines = [formatted_text, f"🧾 ACTION: {tool_name} (dry-run)"]
+    if response.warnings:
+        lines.append("⚠️ Важные предупреждения:")
+        for warning in response.warnings[:3]:
+            lines.append(f"• {warning.message}")
+    return "\n".join(lines)
 
 
 async def handle_tool_call(message: Message, text: str, *, input_kind: str = "text") -> None:
@@ -207,6 +218,58 @@ async def handle_tool_call(message: Message, text: str, *, input_kind: str = "te
         )
         intent_source = "LLM"
         llm_confidence = llm_intent.confidence
+        tool_def = registry.get(llm_intent.tool) if llm_intent.tool else None
+        if tool_def and tool_def.kind == "action":
+            coerced = coerce_action_payload(llm_intent.tool, llm_intent.payload)
+            if not coerced.ok:
+                await message.answer(coerced.missing_prompt())
+                await write_retrospective_event(
+                    correlation_id=correlation_id,
+                    input_kind=input_kind,
+                    text=text,
+                    intent_source="LLM",
+                    llm_confidence=llm_intent.confidence,
+                    tool_name="none",
+                    response=ToolResponse.fail(
+                        correlation_id=correlation_id,
+                        code="MISSING_PARAMETERS",
+                        message=coerced.missing_prompt(),
+                    ),
+                    artifacts=[],
+                )
+                return
+            llm_intent = llm_intent.model_copy(update={"payload": coerced.payload})
+            required_caps = required_capabilities_for_tool(llm_intent.tool)
+            if required_caps and str(settings.upstream_mode).upper() == "SIS_HTTP":
+                caps = await get_sis_capabilities(settings=settings, correlation_id=correlation_id, force_refresh=False)
+                unsupported = [key for key in required_caps if capability_support_status(caps, key) is False]
+                if unsupported:
+                    await message.answer(f"❌ Ошибка: UPSTREAM_NOT_IMPLEMENTED\nSIS capability '{unsupported[0]}' is not implemented.")
+                    await write_retrospective_event(
+                        correlation_id=correlation_id,
+                        input_kind=input_kind,
+                        text=text,
+                        intent_source="LLM",
+                        llm_confidence=llm_intent.confidence,
+                        tool_name=llm_intent.tool,
+                        response=ToolResponse.fail(
+                            correlation_id=correlation_id,
+                            code="UPSTREAM_NOT_IMPLEMENTED",
+                            message=f"SIS capability '{unsupported[0]}' is not implemented.",
+                        ),
+                        artifacts=[],
+                    )
+                    return
+            await write_audit_event(
+                "agent_action_planned",
+                {
+                    "tool_name": llm_intent.tool,
+                    "confidence": llm_intent.confidence,
+                    "source": "LLM",
+                    "payload_keys": sorted(list(coerced.payload.keys()))[:8],
+                },
+                correlation_id=correlation_id,
+            )
         intent.tool = llm_intent.tool
         intent.payload = llm_intent.payload
         intent.presentation = llm_intent.presentation
@@ -431,6 +494,7 @@ async def handle_tool_call(message: Message, text: str, *, input_kind: str = "te
             "payload_commit": payload_commit,
             "owner_user_id": message.from_user.id,
             "idempotency_key": idempotency_key,
+            "source": intent_source,
         }
         token = await create_confirm_token(confirm_payload)
         if requires_force_confirm(response):
@@ -452,8 +516,18 @@ async def handle_tool_call(message: Message, text: str, *, input_kind: str = "te
         else:
             markup = confirm_keyboard(f"{CONFIRM_CB_PREFIX}{token}", f"{CANCEL_CB_PREFIX}{token}")
         formatted_text, quality_payload = format_tool_response_with_quality(response, source_tag=source_tag if "source_tag" in locals() else None, intent_source=intent_source, tool_name=intent.tool)
+        if intent_source == "LLM":
+            await write_audit_event(
+                "agent_action_previewed",
+                {
+                    "tool_name": intent.tool,
+                    "would_apply": bool((response.data or {}).get("would_apply", True)),
+                    "warnings_count": len(response.warnings),
+                },
+                correlation_id=correlation_id,
+            )
         await message.answer(
-            formatted_text,
+            _compose_action_preview_text(formatted_text, intent.tool, response),
             reply_markup=markup,
         )
         await write_audit_event("quality_assessment", quality_payload, correlation_id=correlation_id)
