@@ -12,6 +12,8 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 from app.actions.confirm_flow import create_confirm_token
 from app.actions.capabilities import capability_support_status, get_sis_capabilities, required_capabilities_for_tool
+from app.agent_actions.plan_builder import build_plan_from_text
+from app.agent_actions.plan_executor import clear_active_plan, execute_plan_preview, get_active_plan
 from app.agent_actions.param_coercion import (
     coerce_action_payload,
     parse_hours_value,
@@ -62,6 +64,7 @@ _WIZARD_TTL_SECONDS = 900
 _WIZARD_CANCEL_CB = "ownerbot:wizard:cancel"
 _WIZARD_PRESET_CB = "ownerbot:wizard:preset:"
 _CANCEL_WORDS = {"отмена", "cancel", "стоп"}
+_PLAN_CANCEL_WORDS = {"отмена", "cancel", "стоп"}
 
 _WIZARD_QUESTIONS: dict[str, dict[str, dict[str, object]]] = {
     "create_coupon": {
@@ -121,6 +124,15 @@ def _wizard_markup(config: dict[str, object]) -> InlineKeyboardMarkup:
         rows.append([InlineKeyboardButton(text=str(item), callback_data=f"{_WIZARD_PRESET_CB}{item}") for item in presets[:4]])
     rows.append([InlineKeyboardButton(text="✖️ Отмена", callback_data=_WIZARD_CANCEL_CB)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _plan_confirm_markup(confirm_cb_data: str, cancel_cb_data: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Выполнить", callback_data=confirm_cb_data)],
+            [InlineKeyboardButton(text="✖️ Отмена", callback_data=cancel_cb_data)],
+        ]
+    )
 
 
 async def _render_wizard_prompt(message: Message, tool_name: str, field_name: str) -> None:
@@ -265,6 +277,14 @@ def _compose_action_preview_text(formatted_text: str, tool_name: str, response: 
 async def handle_tool_call(message: Message, text: str, *, input_kind: str = "text", prebuilt_intent: dict | None = None) -> None:
     if prebuilt_intent is None and await _handle_existing_wizard(message, text):
         return
+    if text.lower().strip() in _PLAN_CANCEL_WORDS:
+        active = await get_active_plan(message.chat.id)
+        if active is not None:
+            await clear_active_plan(message.chat.id)
+            await write_audit_event("agent_plan_cancelled", {"chat_id": message.chat.id}, correlation_id=get_correlation_id())
+            await render_anchor_panel(message, text="План отменён.")
+            return
+
     settings = get_settings()
     if prebuilt_intent is None:
         intent = route_intent(text)
@@ -278,6 +298,39 @@ async def handle_tool_call(message: Message, text: str, *, input_kind: str = "te
         llm_confidence = 1.0
     if intent.tool is None:
         correlation_id = get_correlation_id()
+        plan = build_plan_from_text(text, actor=message.from_user, settings=settings)
+        if plan is not None:
+            await write_audit_event(
+                "agent_plan_built",
+                {"plan_id": plan.plan_id, "source": plan.source, "steps_count": len(plan.steps), "step1_tool": plan.steps[0].tool_name},
+                correlation_id=correlation_id,
+            )
+            plan_result = await execute_plan_preview(
+                plan,
+                {
+                    "settings": settings,
+                    "correlation_id": correlation_id,
+                    "message": message,
+                    "chat_id": message.chat.id,
+                    "actor": ToolActor(owner_user_id=message.from_user.id),
+                    "tenant": ToolTenant(project="OwnerBot", shop_id="shop_001", currency="EUR", timezone="Europe/Berlin", locale="ru-RU"),
+                    "idempotency_key": str(uuid.uuid4()),
+                },
+            )
+            formatted_text, quality_payload = format_tool_response_with_quality(
+                plan_result.response,
+                intent_source=plan.source if plan.source == "LLM" else "RULE",
+                tool_name=plan.steps[0].tool_name,
+            )
+            preview_text = f"{formatted_text}\n\n{plan_result.preview_text}"
+            markup = None
+            if plan_result.confirm_needed and plan_result.confirm_cb_data and plan_result.cancel_cb_data:
+                markup = _plan_confirm_markup(plan_result.confirm_cb_data, plan_result.cancel_cb_data)
+            await message.answer(preview_text, reply_markup=markup)
+            await write_audit_event("quality_assessment", quality_payload, correlation_id=correlation_id)
+            await write_audit_event("tool_result_quality", quality_payload, correlation_id=correlation_id)
+            return
+
         try:
             llm_intent, provider = await llm_plan_intent(text=text, settings=settings, registry=registry)
         except Exception as exc:
