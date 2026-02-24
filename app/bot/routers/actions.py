@@ -62,6 +62,7 @@ async def handle_confirm(callback_query: CallbackQuery) -> None:
 
     payload_commit = payload.get("payload_commit", {})
     idempotency_key = payload.get("idempotency_key")
+    source = str(payload.get("source") or "").upper()
     if not tool_name or not idempotency_key:
         await callback_query.message.edit_text("Некорректный payload подтверждения.")
         await callback_query.answer()
@@ -160,6 +161,15 @@ async def handle_confirm(callback_query: CallbackQuery) -> None:
             "idempotency_key": idempotency_key,
         },
     )
+    if source == "LLM" and response.status == "ok":
+        await write_audit_event(
+            "agent_action_committed",
+            {
+                "tool_name": tool_name,
+                "affected_count": int((response.data or {}).get("affected_count") or (response.data or {}).get("updated_count") or 0),
+            },
+            correlation_id=correlation_id,
+        )
 
     text = format_tool_response(response)
     if response.status == "error" and response.error and response.error.code == "ACTION_CONFLICT":

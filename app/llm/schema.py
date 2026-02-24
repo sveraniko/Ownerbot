@@ -24,6 +24,8 @@ class LLMIntent(BaseModel):
     advice: AdvicePayload | None = None
     error_message: str | None = None
     confidence: float = 0.0
+    tool_source: Literal["LLM", "RULE"] | None = None
+    tool_kind: Literal["action", "report"] | None = None
 
     @model_validator(mode="after")
     def _validate_consistency(self) -> "LLMIntent":

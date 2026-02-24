@@ -61,8 +61,10 @@ class OpenAIPlanner:
                             },
                             "error_message": {"type": ["string", "null"]},
                             "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                            "tool_source": {"type": ["string", "null"], "enum": ["LLM", "RULE", None]},
+                            "tool_kind": {"type": ["string", "null"], "enum": ["action", "report", None]},
                         },
-                        "required": ["intent_kind", "tool", "payload", "presentation", "advice", "error_message", "confidence"],
+                        "required": ["intent_kind", "tool", "payload", "presentation", "advice", "error_message", "confidence", "tool_source", "tool_kind"],
                     },
                 }
             },

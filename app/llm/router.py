@@ -52,6 +52,8 @@ async def llm_plan_intent(text: str, settings: Settings, registry: ToolRegistry)
         return LLMIntent(intent_kind="UNKNOWN", tool=None, payload={}, error_message="Не понял запрос. /help", confidence=planned.confidence), provider_label
 
     tool_def = registry.get(planned.tool)
+    tool_kind = "action" if tool_def and tool_def.kind == "action" else "report"
+    planned = planned.model_copy(update={"tool_source": "LLM", "tool_kind": tool_kind})
     if tool_def and tool_def.kind == "action":
         allowed_actions = set(settings.llm_allowed_action_tools)
         if planned.tool not in allowed_actions:
