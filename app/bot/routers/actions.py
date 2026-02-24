@@ -6,6 +6,7 @@ from aiogram import F, Router
 from aiogram.types import CallbackQuery
 
 from app.actions.confirm_flow import compute_payload_hash, expire_confirm_token, get_confirm_payload
+from app.agent_actions.plan_executor import commit_plan
 from app.actions.idempotency import claim_action, finalize_action
 from app.bot.services.tool_runner import run_tool
 from app.bot.ui.formatting import format_tool_response
@@ -80,6 +81,7 @@ async def handle_confirm(callback_query: CallbackQuery) -> None:
         return
 
     correlation_id = get_correlation_id()
+    plan_id = payload.get("plan_id")
     actor = ToolActor(owner_user_id=owner_user_id)
     tenant = ToolTenant(
         project="OwnerBot",
@@ -178,6 +180,20 @@ async def handle_confirm(callback_query: CallbackQuery) -> None:
             text = "SIS требует явное подтверждение аномалии. Запусти dry_run заново и выбери ⚠️ «Применить несмотря на аномалию»."
         elif "нет данных для отката" in msg:
             text = "Откат недоступен: SIS вернул «Нет данных для отката»."
+    if plan_id:
+        plan_result = await commit_plan(
+            str(plan_id),
+            token,
+            {
+                "chat_id": callback_query.message.chat.id,
+                "correlation_id": correlation_id,
+                "owner_user_id": owner_user_id,
+                "tenant": tenant,
+                "callback_query": callback_query,
+                "commit_response": response,
+            },
+        )
+        text = f"{text}\n\n{plan_result.summary_text}"
     await callback_query.message.edit_text(text)
     await callback_query.answer()
     await expire_confirm_token(token, CONFIRM_TOKEN_RETAIN_TTL_SEC_DEFAULT)
