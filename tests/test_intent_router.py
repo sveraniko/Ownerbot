@@ -116,3 +116,12 @@ def test_escalation_intents() -> None:
     assert route_intent("пауза 24").payload == {"hours": 24}
     assert route_intent("эскалацию включи").tool == "ntf_escalation_enable"
     assert route_intent("эскалацию выключи").tool == "ntf_escalation_disable"
+
+
+def test_phrase_pack_source_for_coupon() -> None:
+    result = route_intent("купон 15% на 48 часов")
+
+    assert result.tool == "create_coupon"
+    assert result.source == "RULE_PHRASE_PACK"
+    assert result.payload["percent_off"] == 15
+    assert result.payload["hours_valid"] == 48

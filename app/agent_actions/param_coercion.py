@@ -57,6 +57,41 @@ def _to_hours(value: Any) -> int | None:
     return None
 
 
+def parse_percent_value(value: Any) -> float | None:
+    if isinstance(value, str):
+        normalized = value.lower().strip()
+        if "минус" in normalized:
+            normalized = normalized.replace("минус", "-")
+        value = normalized
+    return _to_float(value)
+
+
+def parse_hours_value(value: Any) -> int | None:
+    if isinstance(value, str):
+        normalized = value.lower().strip()
+        if "сут" in normalized:
+            return 24
+        match_days = re.search(r"(\d{1,3})\s*(д|дн|дня|дней)", normalized)
+        if match_days:
+            return int(match_days.group(1)) * 24
+    return _to_hours(value)
+
+
+def parse_order_id_value(value: Any) -> str | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    match = re.search(r"\b(ob-\d+)\b", text, flags=re.IGNORECASE)
+    if match:
+        return match.group(1).upper()
+    raw = _to_int(text)
+    return str(raw) if raw is not None else None
+
+
+def parse_ids_value(value: Any) -> list[str]:
+    return _to_product_ids(value)
+
+
 def _to_product_ids(value: Any) -> list[str]:
     if isinstance(value, list):
         items = value
@@ -75,7 +110,7 @@ def _to_product_ids(value: Any) -> list[str]:
 def _coerce_prices_bump(payload: dict[str, Any]) -> ActionCoercionResult:
     out: dict[str, Any] = {"dry_run": True}
     raw = payload.get("bump_percent", payload.get("value"))
-    pct = _to_float(raw)
+    pct = parse_percent_value(raw)
     if pct is None:
         return ActionCoercionResult(payload=out, missing_fields=("процент изменения цены",))
     pct = max(0.1, min(95.0, abs(pct)))
@@ -89,9 +124,9 @@ def _coerce_create_coupon(payload: dict[str, Any]) -> ActionCoercionResult:
     out: dict[str, Any] = {"dry_run": True}
     if payload.get("code"):
         out["code"] = str(payload["code"]).strip().upper()
-    pct = _to_float(payload.get("percent_off"))
+    pct = parse_percent_value(payload.get("percent_off"))
     if pct is None:
-        pct = _to_float(payload.get("discount_percent"))
+        pct = parse_percent_value(payload.get("discount_percent"))
     if pct is None:
         return ActionCoercionResult(payload=out, missing_fields=("размер скидки в %",))
     out["percent_off"] = int(max(1, min(95, round(pct))))
@@ -100,7 +135,7 @@ def _coerce_create_coupon(payload: dict[str, Any]) -> ActionCoercionResult:
         if max_uses is not None:
             out["max_uses"] = max_uses
     hours_raw = payload.get("hours_valid", payload.get("duration"))
-    hours = _to_hours(hours_raw) if hours_raw is not None else None
+    hours = parse_hours_value(hours_raw) if hours_raw is not None else None
     if hours is not None:
         out["hours_valid"] = hours
     if not out.get("code"):
@@ -116,7 +151,7 @@ def _coerce_notify_team(payload: dict[str, Any]) -> ActionCoercionResult:
     if not message:
         return ActionCoercionResult(payload=out, missing_fields=("сообщение для менеджера",))
     out["message"] = str(message).strip()
-    order_id = _to_int(payload.get("order_id"))
+    order_id = parse_order_id_value(payload.get("order_id"))
     if order_id is not None and str(order_id) not in out["message"]:
         out["message"] = f"{out['message']} (order {order_id})"
     return ActionCoercionResult(payload=out)
@@ -124,10 +159,19 @@ def _coerce_notify_team(payload: dict[str, Any]) -> ActionCoercionResult:
 
 def _coerce_products_publish(payload: dict[str, Any], *, target_status: str) -> ActionCoercionResult:
     out: dict[str, Any] = {"dry_run": True, "target_status": target_status}
-    product_ids = _to_product_ids(payload.get("product_ids"))
+    product_ids = parse_ids_value(payload.get("product_ids"))
     if not product_ids:
         return ActionCoercionResult(payload=out, missing_fields=("список product_ids",))
     out["product_ids"] = product_ids
+    return ActionCoercionResult(payload=out)
+
+
+def _coerce_looks_publish(payload: dict[str, Any], *, target_active: bool) -> ActionCoercionResult:
+    out: dict[str, Any] = {"dry_run": True, "target_active": target_active}
+    look_ids = parse_ids_value(payload.get("look_ids"))
+    if not look_ids:
+        return ActionCoercionResult(payload=out, missing_fields=("список look_ids",))
+    out["look_ids"] = look_ids
     return ActionCoercionResult(payload=out)
 
 
@@ -146,6 +190,7 @@ COERCERS = {
     "create_coupon": _coerce_create_coupon,
     "notify_team": _coerce_notify_team,
     "sis_products_publish": lambda payload: _coerce_products_publish(payload, target_status=str((payload or {}).get("target_status") or "ACTIVE")),
+    "sis_looks_publish": lambda payload: _coerce_looks_publish(payload, target_active=bool((payload or {}).get("target_active", True))),
 }
 
 

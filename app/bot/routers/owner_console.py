@@ -12,7 +12,13 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 from app.actions.confirm_flow import create_confirm_token
 from app.actions.capabilities import capability_support_status, get_sis_capabilities, required_capabilities_for_tool
-from app.agent_actions.param_coercion import coerce_action_payload
+from app.agent_actions.param_coercion import (
+    coerce_action_payload,
+    parse_hours_value,
+    parse_ids_value,
+    parse_order_id_value,
+    parse_percent_value,
+)
 from app.asr.audio_convert import convert_ogg_to_wav
 from app.asr.cache import get_or_transcribe
 from app.asr.errors import ASRError
@@ -25,6 +31,8 @@ from app.bot.services.retrospective import write_retrospective_event
 from app.bot.services.tool_runner import run_tool
 from app.bot.services.presentation import send_revenue_trend_png, send_weekly_pdf
 from app.bot.ui.formatting import detect_source_tag, format_tool_response_with_quality
+from app.bot.ui.anchor_panel import render_anchor_panel
+from app.bot.ui.home_render import render_home_panel
 from app.bot.ui.templates_keyboards import (
     build_templates_discounts_keyboard,
     build_templates_main_keyboard,
@@ -49,6 +57,176 @@ router = Router()
 logger = logging.getLogger(__name__)
 registry = build_registry()
 _ADVICE_TOOL_PREFIX = "llm:advice_tool:"
+_WIZARD_KEY_PREFIX = "ownerbot:action_wizard:"
+_WIZARD_TTL_SECONDS = 900
+_WIZARD_CANCEL_CB = "ownerbot:wizard:cancel"
+_WIZARD_PRESET_CB = "ownerbot:wizard:preset:"
+_CANCEL_WORDS = {"отмена", "cancel", "стоп"}
+
+_WIZARD_QUESTIONS: dict[str, dict[str, dict[str, object]]] = {
+    "create_coupon": {
+        "размер скидки в %": {"text": "Сколько процентов скидка? (например 10)", "presets": ["5", "10", "15", "20"]},
+        "срок действия в часах": {"text": "На сколько часов? (24/48/72)", "presets": ["24", "48", "72"]},
+    },
+    "sis_prices_bump": {
+        "процент изменения цены": {"text": "На сколько процентов изменить цену?", "presets": ["3", "5", "10"]},
+    },
+    "notify_team": {
+        "сообщение для менеджера": {"text": "Что передать менеджеру?"},
+    },
+    "sis_products_publish": {
+        "список product_ids": {"text": "ID товаров через запятую"},
+    },
+    "sis_looks_publish": {
+        "список look_ids": {"text": "ID луков через запятую"},
+    },
+}
+
+
+def _wizard_key(chat_id: int) -> str:
+    return f"{_WIZARD_KEY_PREFIX}{chat_id}"
+
+
+async def _get_wizard_state(chat_id: int) -> dict | None:
+    try:
+        redis = await get_redis()
+        raw = await redis.get(_wizard_key(chat_id))
+    except Exception:
+        return None
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except Exception:
+        return None
+
+
+async def _set_wizard_state(chat_id: int, state: dict) -> None:
+    redis = await get_redis()
+    await redis.set(_wizard_key(chat_id), json.dumps(state), ex=_WIZARD_TTL_SECONDS)
+
+
+async def _clear_wizard_state(chat_id: int) -> None:
+    try:
+        redis = await get_redis()
+        await redis.delete(_wizard_key(chat_id))
+    except Exception:
+        return
+
+
+def _wizard_markup(config: dict[str, object]) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    presets = config.get("presets") if isinstance(config, dict) else None
+    if isinstance(presets, list) and presets:
+        rows.append([InlineKeyboardButton(text=str(item), callback_data=f"{_WIZARD_PRESET_CB}{item}") for item in presets[:4]])
+    rows.append([InlineKeyboardButton(text="✖️ Отмена", callback_data=_WIZARD_CANCEL_CB)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _render_wizard_prompt(message: Message, tool_name: str, field_name: str) -> None:
+    config = _WIZARD_QUESTIONS.get(tool_name, {}).get(field_name, {"text": f"Уточни: {field_name}"})
+    await render_anchor_panel(message, text=str(config.get("text", f"Уточни: {field_name}")), reply_markup=_wizard_markup(config))
+
+
+def _parse_wizard_field(field_name: str, text: str) -> dict:
+    if field_name in {"размер скидки в %", "процент изменения цены"}:
+        value = parse_percent_value(text)
+        if value is None:
+            return {}
+        if field_name == "размер скидки в %":
+            return {"percent_off": abs(value)}
+        return {"value": value}
+    if field_name == "срок действия в часах":
+        value = parse_hours_value(text)
+        return {"hours_valid": value} if value is not None else {}
+    if field_name in {"список product_ids", "список look_ids"}:
+        ids = parse_ids_value(text)
+        if not ids:
+            return {}
+        return {"product_ids": ids} if "product" in field_name else {"look_ids": ids}
+    if field_name == "сообщение для менеджера":
+        cleaned = text.strip()
+        return {"message": cleaned} if cleaned else {}
+    if field_name == "номер заказа":
+        order_id = parse_order_id_value(text)
+        return {"order_id": order_id} if order_id else {}
+    return {}
+
+
+async def _start_wizard(message: Message, *, tool_name: str, payload_partial: dict, missing_fields: tuple[str, ...], source: str, correlation_id: str) -> None:
+    if not getattr(message, "chat", None):
+        await message.answer(f"Нужно уточнить: {', '.join(missing_fields)}.")
+        return
+    state = {
+        "tool_name": tool_name,
+        "payload_partial": payload_partial,
+        "missing_fields": list(missing_fields),
+        "step_index": 0,
+        "created_at": int(time.time()),
+        "source": source,
+        "correlation_id": correlation_id,
+    }
+    await _set_wizard_state(message.chat.id, state)
+    await write_audit_event("agent_action_wizard_started", {"tool_name": tool_name, "missing_fields": list(missing_fields)}, correlation_id=correlation_id)
+    field_name = missing_fields[0]
+    await write_audit_event("agent_action_wizard_step", {"field_name": field_name}, correlation_id=correlation_id)
+    await _render_wizard_prompt(message, tool_name, field_name)
+
+
+async def _cancel_wizard(message: Message, *, correlation_id: str) -> None:
+    await _clear_wizard_state(message.chat.id)
+    await write_audit_event("agent_action_wizard_cancelled", {}, correlation_id=correlation_id)
+    await message.answer("Ок, отменил.")
+    await render_home_panel(message)
+
+
+async def _handle_existing_wizard(message: Message, text: str) -> bool:
+    if not getattr(message, "chat", None):
+        return False
+    state = await _get_wizard_state(message.chat.id)
+    if state is None:
+        return False
+    if text.startswith("/"):
+        return False
+    correlation_id = get_correlation_id()
+    if text.lower().strip() in _CANCEL_WORDS:
+        await _cancel_wizard(message, correlation_id=correlation_id)
+        return True
+    missing_fields = list(state.get("missing_fields") or [])
+    step_index = int(state.get("step_index") or 0)
+    if step_index >= len(missing_fields):
+        await _clear_wizard_state(message.chat.id)
+        await message.answer("Контекст устарел. Повтори команду.")
+        return True
+    field_name = str(missing_fields[step_index])
+    parsed = _parse_wizard_field(field_name, text)
+    if not parsed:
+        await _render_wizard_prompt(message, str(state.get("tool_name") or ""), field_name)
+        return True
+    payload_partial = dict(state.get("payload_partial") or {})
+    payload_partial.update(parsed)
+    step_index += 1
+    if step_index < len(missing_fields):
+        state["payload_partial"] = payload_partial
+        state["step_index"] = step_index
+        await _set_wizard_state(message.chat.id, state)
+        next_field = str(missing_fields[step_index])
+        await write_audit_event("agent_action_wizard_step", {"field_name": next_field}, correlation_id=correlation_id)
+        await _render_wizard_prompt(message, str(state.get("tool_name") or ""), next_field)
+        return True
+    await _clear_wizard_state(message.chat.id)
+    await write_audit_event("agent_action_wizard_completed", {"tool_name": state.get("tool_name")}, correlation_id=correlation_id)
+    await handle_tool_call(
+        message,
+        text,
+        input_kind="wizard",
+        prebuilt_intent={
+            "tool": state.get("tool_name"),
+            "payload": payload_partial,
+            "source": state.get("source", "LLM"),
+        },
+    )
+    return True
 
 
 async def _build_advice_tools_keyboard(owner_user_id: int, suggested_tools: list[dict]) -> InlineKeyboardMarkup | None:
@@ -84,11 +262,20 @@ def _compose_action_preview_text(formatted_text: str, tool_name: str, response: 
     return "\n".join(lines)
 
 
-async def handle_tool_call(message: Message, text: str, *, input_kind: str = "text") -> None:
+async def handle_tool_call(message: Message, text: str, *, input_kind: str = "text", prebuilt_intent: dict | None = None) -> None:
+    if prebuilt_intent is None and await _handle_existing_wizard(message, text):
+        return
     settings = get_settings()
-    intent = route_intent(text)
-    intent_source = "RULE"
-    llm_confidence = 1.0
+    if prebuilt_intent is None:
+        intent = route_intent(text)
+        intent_source = getattr(intent, "source", "RULE")
+        llm_confidence = 1.0
+    else:
+        intent = route_intent("/noop")
+        intent.tool = str(prebuilt_intent.get("tool") or "")
+        intent.payload = dict(prebuilt_intent.get("payload") or {})
+        intent_source = str(prebuilt_intent.get("source") or "LLM")
+        llm_confidence = 1.0
     if intent.tool is None:
         correlation_id = get_correlation_id()
         try:
@@ -222,7 +409,14 @@ async def handle_tool_call(message: Message, text: str, *, input_kind: str = "te
         if tool_def and tool_def.kind == "action":
             coerced = coerce_action_payload(llm_intent.tool, llm_intent.payload)
             if not coerced.ok:
-                await message.answer(coerced.missing_prompt())
+                await _start_wizard(
+                    message,
+                    tool_name=llm_intent.tool,
+                    payload_partial=coerced.payload,
+                    missing_fields=coerced.missing_fields,
+                    source="LLM",
+                    correlation_id=correlation_id,
+                )
                 await write_retrospective_event(
                     correlation_id=correlation_id,
                     input_kind=input_kind,
@@ -307,6 +501,20 @@ async def handle_tool_call(message: Message, text: str, *, input_kind: str = "te
     effective_mode, _runtime_override = await resolve_effective_mode(settings=settings, redis=redis)
 
     tool = registry.get(intent.tool)
+    if tool and tool.kind == "action":
+        coerced_action = coerce_action_payload(intent.tool, intent.payload)
+        if not coerced_action.ok:
+            await _start_wizard(
+                message,
+                tool_name=intent.tool,
+                payload_partial=coerced_action.payload,
+                missing_fields=coerced_action.missing_fields,
+                source=intent_source,
+                correlation_id=get_correlation_id(),
+            )
+            return
+        intent.payload = coerced_action.payload
+
     if tool is None:
         correlation_id = get_correlation_id()
         response = await run_tool(
@@ -606,6 +814,29 @@ async def _handle_voice_templates_shortcut(message: Message, transcript: str) ->
     return True
 
 
+
+
+
+@router.callback_query(F.data == _WIZARD_CANCEL_CB)
+async def cancel_action_wizard(callback_query: CallbackQuery) -> None:
+    if callback_query.message is None:
+        return
+    msg = callback_query.message
+    await _cancel_wizard(msg, correlation_id=get_correlation_id())
+    await callback_query.answer()
+
+
+@router.callback_query(F.data.startswith(_WIZARD_PRESET_CB))
+async def wizard_preset_value(callback_query: CallbackQuery) -> None:
+    if callback_query.message is None or callback_query.data is None:
+        return
+    state = await _get_wizard_state(callback_query.message.chat.id)
+    if state is None:
+        await callback_query.answer("Контекст устарел. Повтори команду.", show_alert=True)
+        return
+    value = callback_query.data.replace(_WIZARD_PRESET_CB, "", 1)
+    await _handle_existing_wizard(callback_query.message, value)
+    await callback_query.answer()
 
 @router.callback_query(F.data.startswith(_ADVICE_TOOL_PREFIX))
 async def run_advice_suggested_tool(callback_query: CallbackQuery) -> None:
