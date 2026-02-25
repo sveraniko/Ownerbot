@@ -1,0 +1,13 @@
+template_id: SYS_RETRO_EXPORT_7D
+category: systems
+title: Retro export 7d (JSON)
+button_text: ⬇️ Export JSON
+kind: REPORT
+tool_name: retro_export
+order: 48
+default_payload:
+  period_days: 7
+  include_gaps: true
+  include_funnels: true
+  format: json
+inputs: []
