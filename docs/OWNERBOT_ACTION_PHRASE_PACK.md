@@ -68,3 +68,7 @@
   - «cancel»
   - «стоп»
 - Mapping: action wizard cancel (без вызова tool)
+
+## Rule-pack contract
+- `docs/Rule-pack.md` используется как продуктовая спецификация.
+- Контрактные тесты в `tests/test_rule_pack_contract.py` проверяют покрытие ключевых 20 фраз и защищают от дрейфа между docs и SSOT-кодом.

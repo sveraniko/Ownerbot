@@ -64,6 +64,7 @@ async def handle_confirm(callback_query: CallbackQuery) -> None:
     payload_commit = payload.get("payload_commit", {})
     idempotency_key = payload.get("idempotency_key")
     source = str(payload.get("source") or "").upper()
+    exec_mode = str(payload.get("exec_mode") or "all")
     if not tool_name or not idempotency_key:
         await callback_query.message.edit_text("Некорректный payload подтверждения.")
         await callback_query.answer()
@@ -191,6 +192,7 @@ async def handle_confirm(callback_query: CallbackQuery) -> None:
                 "tenant": tenant,
                 "callback_query": callback_query,
                 "commit_response": response,
+                "exec_mode": exec_mode,
             },
         )
         text = f"{text}\n\n{plan_result.summary_text}"
