@@ -13,6 +13,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from app.actions.confirm_flow import create_confirm_token
 from app.actions.capabilities import capability_support_status, get_sis_capabilities, required_capabilities_for_tool
 from app.agent_actions.plan_builder import build_plan_from_text
+from app.agent_actions.plan_models import PlanIntent
 from app.agent_actions.plan_executor import clear_active_plan, execute_plan_preview, get_active_plan
 from app.agent_actions.param_coercion import (
     coerce_action_payload,
@@ -126,10 +127,11 @@ def _wizard_markup(config: dict[str, object]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def _plan_confirm_markup(confirm_cb_data: str, cancel_cb_data: str) -> InlineKeyboardMarkup:
+def _plan_confirm_markup(confirm_cb_data: str, only_main_cb_data: str, cancel_cb_data: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="✅ Выполнить", callback_data=confirm_cb_data)],
+            [InlineKeyboardButton(text="✅ Выполнить всё", callback_data=confirm_cb_data)],
+            [InlineKeyboardButton(text="✅ Выполнить только основной шаг", callback_data=only_main_cb_data)],
             [InlineKeyboardButton(text="✖️ Отмена", callback_data=cancel_cb_data)],
         ]
     )
@@ -165,7 +167,7 @@ def _parse_wizard_field(field_name: str, text: str) -> dict:
     return {}
 
 
-async def _start_wizard(message: Message, *, tool_name: str, payload_partial: dict, missing_fields: tuple[str, ...], source: str, correlation_id: str) -> None:
+async def _start_wizard(message: Message, *, tool_name: str, payload_partial: dict, missing_fields: tuple[str, ...], source: str, correlation_id: str, plan_context: dict | None = None) -> None:
     if not getattr(message, "chat", None):
         await message.answer(f"Нужно уточнить: {', '.join(missing_fields)}.")
         return
@@ -178,6 +180,8 @@ async def _start_wizard(message: Message, *, tool_name: str, payload_partial: di
         "source": source,
         "correlation_id": correlation_id,
     }
+    if plan_context is not None:
+        state["plan_context"] = plan_context
     await _set_wizard_state(message.chat.id, state)
     await write_audit_event("agent_action_wizard_started", {"tool_name": tool_name, "missing_fields": list(missing_fields)}, correlation_id=correlation_id)
     field_name = missing_fields[0]
@@ -228,6 +232,36 @@ async def _handle_existing_wizard(message: Message, text: str) -> bool:
         return True
     await _clear_wizard_state(message.chat.id)
     await write_audit_event("agent_action_wizard_completed", {"tool_name": state.get("tool_name")}, correlation_id=correlation_id)
+    plan_context = state.get("plan_context")
+    if isinstance(plan_context, dict) and plan_context.get("plan"):
+        plan_raw = dict(plan_context.get("plan") or {})
+        step_id = str(plan_context.get("step_id") or "s1")
+        for step in plan_raw.get("steps", []):
+            if str(step.get("step_id")) == step_id:
+                payload = dict(step.get("payload") or {})
+                payload.update(payload_partial)
+                step["payload"] = payload
+                break
+        plan = PlanIntent.model_validate(plan_raw)
+        plan_result = await execute_plan_preview(
+            plan,
+            {
+                "settings": get_settings(),
+                "correlation_id": correlation_id,
+                "message": message,
+                "chat_id": message.chat.id,
+                "actor": ToolActor(owner_user_id=message.from_user.id),
+                "tenant": ToolTenant(project="OwnerBot", shop_id="shop_001", currency="EUR", timezone="Europe/Berlin", locale="ru-RU"),
+                "idempotency_key": str(uuid.uuid4()),
+            },
+        )
+        formatted_text, _ = format_tool_response_with_quality(plan_result.response, intent_source=plan.source if plan.source == "LLM" else "RULE", tool_name=plan.steps[0].tool_name)
+        preview_text = f"{formatted_text}\n\n{plan_result.preview_text}"
+        markup = None
+        if plan_result.confirm_needed and plan_result.confirm_cb_data and plan_result.confirm_only_main_cb_data and plan_result.cancel_cb_data:
+            markup = _plan_confirm_markup(plan_result.confirm_cb_data, plan_result.confirm_only_main_cb_data, plan_result.cancel_cb_data)
+        await message.answer(preview_text, reply_markup=markup)
+        return
     await handle_tool_call(
         message,
         text,
@@ -300,6 +334,21 @@ async def handle_tool_call(message: Message, text: str, *, input_kind: str = "te
         correlation_id = get_correlation_id()
         plan = build_plan_from_text(text, actor=message.from_user, settings=settings)
         if plan is not None:
+            for step in plan.steps:
+                if step.kind != "TOOL" or step.tool_name not in {"create_coupon", "sis_prices_bump"}:
+                    continue
+                coerced_plan_step = coerce_action_payload(str(step.tool_name), dict(step.payload or {}))
+                if not coerced_plan_step.ok:
+                    await _start_wizard(
+                        message,
+                        tool_name=str(step.tool_name),
+                        payload_partial=coerced_plan_step.payload,
+                        missing_fields=coerced_plan_step.missing_fields,
+                        source=plan.source,
+                        correlation_id=correlation_id,
+                        plan_context={"plan": plan.model_dump(), "step_id": step.step_id},
+                    )
+                    return
             await write_audit_event(
                 "agent_plan_built",
                 {"plan_id": plan.plan_id, "source": plan.source, "steps_count": len(plan.steps), "step1_tool": plan.steps[0].tool_name},
@@ -324,11 +373,16 @@ async def handle_tool_call(message: Message, text: str, *, input_kind: str = "te
             )
             preview_text = f"{formatted_text}\n\n{plan_result.preview_text}"
             markup = None
-            if plan_result.confirm_needed and plan_result.confirm_cb_data and plan_result.cancel_cb_data:
-                markup = _plan_confirm_markup(plan_result.confirm_cb_data, plan_result.cancel_cb_data)
+            if plan_result.confirm_needed and plan_result.confirm_cb_data and plan_result.confirm_only_main_cb_data and plan_result.cancel_cb_data:
+                markup = _plan_confirm_markup(plan_result.confirm_cb_data, plan_result.confirm_only_main_cb_data, plan_result.cancel_cb_data)
             await message.answer(preview_text, reply_markup=markup)
             await write_audit_event("quality_assessment", quality_payload, correlation_id=correlation_id)
             await write_audit_event("tool_result_quality", quality_payload, correlation_id=correlation_id)
+            return
+
+        lowered_text = text.lower()
+        if ("купон" in lowered_text or "скидк" in lowered_text) and ("репрайс" in lowered_text or "обнови цены" in lowered_text or "пересчитай цены" in lowered_text):
+            await message.answer("Нельзя безопасно объединить два commit-действия в один план. Выбери отдельно: «Сделать купон» или «Сделать репрайс».")
             return
 
         try:

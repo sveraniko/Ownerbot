@@ -74,13 +74,32 @@ def _extract_notify_message(text: str) -> dict[str, Any]:
     return {"message": cleaned} if cleaned else {}
 
 
+def _extract_coupon_code(text: str) -> dict[str, Any]:
+    match = re.search(r"(?:купон\s+)([a-z0-9_-]+)", text, flags=re.IGNORECASE)
+    if not match:
+        return {}
+    return {"code": match.group(1).upper()}
+
+
 RULES: tuple[ActionPhraseRule, ...] = (
+    ActionPhraseRule(
+        id="fx_status",
+        tool_name="sis_fx_status",
+        patterns=(r"\b(проверь курс|какой сейчас курс|что по курсу|fx статус|курс валют)\b",),
+        priority=5,
+    ),
     ActionPhraseRule(
         id="fx_reprice",
         tool_name="sis_fx_reprice_auto",
-        patterns=(r"\b(репрайс|пересчитай цены|обнови цены по курсу|fx apply|проверь курс)\b",),
+        patterns=(r"\b(репрайс|пересчитай цены|обнови цены по курсу|fx apply|если надо обнови цены)\b",),
         defaults={"refresh_snapshot": True, "force": False},
         priority=10,
+    ),
+    ActionPhraseRule(
+        id="fx_rollback",
+        tool_name="sis_fx_rollback",
+        patterns=(r"\b(rollback цен|откатить последнее обновление цен|откат цен)\b",),
+        priority=12,
     ),
     ActionPhraseRule(
         id="prices_bump",
@@ -97,9 +116,17 @@ RULES: tuple[ActionPhraseRule, ...] = (
         priority=30,
     ),
     ActionPhraseRule(
+        id="coupon_disable",
+        tool_name="create_coupon",
+        patterns=(r"\b(выключи купон|отключи купон)\b",),
+        param_extractors=(_extract_coupon_code,),
+        defaults={"disable": True},
+        priority=31,
+    ),
+    ActionPhraseRule(
         id="notify_team",
         tool_name="notify_team",
-        patterns=(r"\b(пинг менеджеру|напомни по заказу|сообщи команде)\b",),
+        patterns=(r"\b(пинг менеджеру|напомни по заказу|сообщи команде|пингни команду)\b",),
         param_extractors=(_extract_order_id, _extract_notify_message),
         priority=40,
     ),
@@ -119,6 +146,20 @@ RULES: tuple[ActionPhraseRule, ...] = (
         defaults={"target_active": True},
         priority=60,
     ),
+    ActionPhraseRule(
+        id="discounts_set",
+        tool_name="sis_discounts_set",
+        patterns=(r"\b(поставь скидку)\b",),
+        param_extractors=(_extract_product_ids, _extract_percent),
+        priority=70,
+    ),
+    ActionPhraseRule(
+        id="discounts_clear",
+        tool_name="sis_discounts_clear",
+        patterns=(r"\b(убери скидки|очисти скидки)\b",),
+        param_extractors=(_extract_product_ids,),
+        priority=71,
+    ),
 )
 
 
@@ -128,12 +169,16 @@ def _apply_overrides(rule: ActionPhraseRule, text: str, payload: dict[str, Any])
         payload["target_status"] = "ARCHIVED"
     if rule.tool_name == "sis_looks_publish" and any(token in lowered for token in ("скрой", "архив")):
         payload["target_active"] = False
+    if rule.tool_name == "sis_fx_reprice_auto" and any(token in lowered for token in ("форс", "принуд")):
+        payload["force"] = True
 
 
 def _missing_hints(tool_name: str, payload: dict[str, Any]) -> tuple[str, ...]:
     if tool_name == "sis_prices_bump" and payload.get("value") is None:
         return ("процент изменения цены",)
     if tool_name == "create_coupon":
+        if payload.get("disable"):
+            return () if payload.get("code") else ("код купона",)
         missing = []
         if payload.get("percent_off") is None:
             missing.append("размер скидки в %")
@@ -142,7 +187,7 @@ def _missing_hints(tool_name: str, payload: dict[str, Any]) -> tuple[str, ...]:
         return tuple(missing)
     if tool_name == "notify_team" and not payload.get("message") and not payload.get("order_id"):
         return ("сообщение для менеджера",)
-    if tool_name == "sis_products_publish" and not payload.get("product_ids"):
+    if tool_name in {"sis_products_publish", "sis_discounts_set", "sis_discounts_clear"} and not payload.get("product_ids"):
         return ("список product_ids",)
     if tool_name == "sis_looks_publish" and not payload.get("look_ids"):
         return ("список look_ids",)

@@ -4,21 +4,36 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+_ALLOWED_CONDITIONS = (
+    {"if": "would_apply_true"},
+    {"if": "noop_true"},
+    {"if": "commit_succeeded"},
+    {"if": "always"},
+)
+
 
 class PlanStep(BaseModel):
-    step_id: Literal["s1", "s2"]
+    step_id: str
     kind: Literal["TOOL", "NOTIFY_TEAM"]
     tool_name: str | None = None
     payload: dict[str, Any] | None = None
     requires_confirm: bool = False
     condition: dict[str, str] | None = None
+    label: str | None = None
+
+    @field_validator("step_id")
+    @classmethod
+    def _validate_step_id(cls, value: str) -> str:
+        if value not in {"s1", "s2", "s3", "s4", "s5"}:
+            raise ValueError("step_id must be one of s1..s5")
+        return value
 
     @field_validator("condition")
     @classmethod
     def _validate_condition(cls, value: dict[str, str] | None) -> dict[str, str] | None:
         if value is None:
             return None
-        if value not in ({"if": "would_apply_true"}, {"if": "commit_succeeded"}):
+        if value not in _ALLOWED_CONDITIONS:
             raise ValueError("Unsupported condition")
         return value
 
@@ -26,7 +41,7 @@ class PlanStep(BaseModel):
 class PlanIntent(BaseModel):
     plan_id: str
     source: Literal["RULE_PHRASE_PACK", "LLM"]
-    steps: list[PlanStep] = Field(min_length=1, max_length=2)
+    steps: list[PlanStep] = Field(min_length=1, max_length=5)
     summary: str
     confidence: float | None = None
 
@@ -39,10 +54,12 @@ class PlanIntent(BaseModel):
             raise ValueError("First step must be s1")
         if self.steps[0].kind != "TOOL":
             raise ValueError("Step1 must be TOOL")
-        if len(self.steps) == 2:
-            step2 = self.steps[1]
-            if step2.step_id != "s2" or step2.kind != "NOTIFY_TEAM":
-                raise ValueError("Step2 must be NOTIFY_TEAM")
-            if step2.requires_confirm:
-                raise ValueError("Step2 cannot require confirm")
+
+        expected_ids = [f"s{idx}" for idx in range(1, len(self.steps) + 1)]
+        current_ids = [step.step_id for step in self.steps]
+        if current_ids != expected_ids:
+            raise ValueError("Steps must be ordered and contiguous from s1")
+
+        if confirm_steps and confirm_steps[0].kind != "TOOL":
+            raise ValueError("Confirm-required step must be TOOL")
         return self
