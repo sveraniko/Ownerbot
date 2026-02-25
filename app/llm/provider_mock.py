@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.llm.schema import AdvicePayload, AdviceSuggestedTool, LLMIntent
+from app.llm.schema import AdvicePayload, AdviceSuggestedAction, AdviceSuggestedTool, LLMIntent
 
 
 class MockPlanner:
@@ -25,9 +25,12 @@ class MockPlanner:
             return LLMIntent(
                 intent_kind="ADVICE",
                 advice=AdvicePayload(
+                    title="Гипотезы роста",
                     bullets=["Проверьте влияние канала трафика и цены предложения."],
+                    risks=["Без проверки данных гипотеза может быть ложной."],
                     experiments=["Сравнить конверсию по каналам за 7 дней и 30 дней."],
                     suggested_tools=[AdviceSuggestedTool(tool="kpi_snapshot", payload={"window": "7d"})],
+                    suggested_actions=[AdviceSuggestedAction(label="Подготовить купон (preview)", tool="create_coupon", payload_partial={"dry_run": True, "percent_off": 10}, why="Тест на конверсию")],
                 ),
                 confidence=0.74,
             )

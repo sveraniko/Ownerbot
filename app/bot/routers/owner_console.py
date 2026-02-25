@@ -13,7 +13,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from app.actions.confirm_flow import create_confirm_token
 from app.actions.capabilities import capability_support_status, get_sis_capabilities, required_capabilities_for_tool
 from app.agent_actions.plan_builder import build_plan_from_text
-from app.agent_actions.plan_models import PlanIntent
+from app.agent_actions.plan_models import PlanIntent, PlanStep
 from app.agent_actions.plan_executor import clear_active_plan, execute_plan_preview, get_active_plan
 from app.agent_actions.param_coercion import (
     coerce_action_payload,
@@ -47,6 +47,9 @@ from app.core.logging import get_correlation_id
 from app.core.redis import get_redis
 from app.core.settings import get_settings
 from app.core.audit import write_audit_event
+from app.advice.classifier import AdviceTopic, classify_advice_topic
+from app.advice.playbooks import build_playbook
+from app.advice.sanitizer import format_advice_text, sanitize_advice_payload
 from app.llm.router import llm_plan_intent
 from app.quality.models import QualityContext
 from app.quality.verifier import assess_advice_intent, format_quality_header
@@ -60,12 +63,20 @@ router = Router()
 logger = logging.getLogger(__name__)
 registry = build_registry()
 _ADVICE_TOOL_PREFIX = "llm:advice_tool:"
+_ADVICE_VALIDATE_PREFIX = "llm:advice_validate:"
+_ADVICE_ACTION_PREFIX = "llm:advice_action:"
 _WIZARD_KEY_PREFIX = "ownerbot:action_wizard:"
 _WIZARD_TTL_SECONDS = 900
 _WIZARD_CANCEL_CB = "ownerbot:wizard:cancel"
 _WIZARD_PRESET_CB = "ownerbot:wizard:preset:"
 _CANCEL_WORDS = {"отмена", "cancel", "стоп"}
 _PLAN_CANCEL_WORDS = {"отмена", "cancel", "стоп"}
+
+
+def _looks_like_advice_query(text: str) -> bool:
+    lowered = text.lower()
+    markers = ("что", "как", "почему", "совет", "стоит ли", "где", "когда")
+    return any(marker in lowered for marker in markers) or "?" in text
 
 _WIZARD_QUESTIONS: dict[str, dict[str, dict[str, object]]] = {
     "create_coupon": {
@@ -275,18 +286,62 @@ async def _handle_existing_wizard(message: Message, text: str) -> bool:
     return True
 
 
-async def _build_advice_tools_keyboard(owner_user_id: int, suggested_tools: list[dict]) -> InlineKeyboardMarkup | None:
-    if not suggested_tools:
+async def _store_advice_bundle(owner_user_id: int, *, suggested_tools: list[dict], suggested_actions: list[dict]) -> tuple[str, str] | None:
+    if not suggested_tools and not suggested_actions:
         return None
     redis = await get_redis()
-    rows = []
-    for index, item in enumerate(suggested_tools[:3], start=1):
-        token = str(uuid.uuid4())
-        payload = {"owner_user_id": owner_user_id, "tool": item.get("tool"), "payload": item.get("payload") or {}}
-        await redis.set(f"{_ADVICE_TOOL_PREFIX}{token}", json.dumps(payload), ex=900)
-        rows.append([InlineKeyboardButton(text=f"Проверить данными #{index}", callback_data=f"{_ADVICE_TOOL_PREFIX}{token}")])
-    rows.append([InlineKeyboardButton(text="🏠 Главная", callback_data="ui:home")])
+    validate_token = str(uuid.uuid4())
+    action_token = str(uuid.uuid4())
+    payload = {
+        "owner_user_id": owner_user_id,
+        "suggested_tools": suggested_tools[:5],
+        "suggested_actions": suggested_actions[:3],
+    }
+    raw = json.dumps(payload)
+    try:
+        await redis.set(f"{_ADVICE_VALIDATE_PREFIX}{validate_token}", raw, ex=900)
+        await redis.set(f"{_ADVICE_ACTION_PREFIX}{action_token}", raw, ex=900)
+    except Exception:
+        return None
+    return validate_token, action_token
+
+
+async def _build_advice_keyboard(owner_user_id: int, *, suggested_tools: list[dict], suggested_actions: list[dict]) -> InlineKeyboardMarkup | None:
+    stored = await _store_advice_bundle(owner_user_id, suggested_tools=suggested_tools, suggested_actions=suggested_actions)
+    if stored is None:
+        return None
+    validate_token, action_token = stored
+    rows: list[list[InlineKeyboardButton]] = []
+    if suggested_tools:
+        rows.append([InlineKeyboardButton(text="✅ Проверить данными", callback_data=f"{_ADVICE_VALIDATE_PREFIX}{validate_token}")])
+    if suggested_actions:
+        rows.append([InlineKeyboardButton(text="🧩 Предложить действия (preview)", callback_data=f"{_ADVICE_ACTION_PREFIX}{action_token}")])
+    rows.append([InlineKeyboardButton(text="🧠 Советник", callback_data="ui:advisor")])
+    rows.append([InlineKeyboardButton(text="🏠 Home", callback_data="ui:home")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _plan_from_suggested_action(action: dict, *, source: str = "RULE_PHRASE_PACK") -> PlanIntent | None:
+    tool_name = str(action.get("tool") or "")
+    if not tool_name:
+        return None
+    payload = dict(action.get("payload_partial") or {})
+    payload["dry_run"] = True
+    step = PlanStep(step_id="s1", kind="TOOL", tool_name=tool_name, payload=payload, requires_confirm=True, label=str(action.get("label") or tool_name))
+    return PlanIntent(plan_id=str(uuid.uuid4()), source=source, steps=[step], summary=str(action.get("why") or "Advice action preview"), confidence=1.0)
+
+
+async def _render_advice(message: Message, *, advice_payload, confidence: float, intent_source: str) -> None:
+    sanitized = sanitize_advice_payload(advice_payload)
+    advice_for_quality = sanitized.model_copy(update={"confidence": confidence})
+    badge = assess_advice_intent(advice_for_quality, QualityContext(intent_source=intent_source, intent_kind="ADVICE", tool_name=None))
+    text = format_advice_text(sanitized, format_quality_header(badge), badge.warnings)
+    keyboard = await _build_advice_keyboard(
+        owner_user_id=message.from_user.id,
+        suggested_tools=[tool.model_dump() for tool in sanitized.suggested_tools],
+        suggested_actions=[action.model_dump() for action in sanitized.suggested_actions],
+    )
+    await message.answer(text, reply_markup=keyboard)
 
 
 async def _send_weekly_pdf(message: Message, actor: ToolActor, tenant: ToolTenant, correlation_id: str) -> None:
@@ -385,6 +440,14 @@ async def handle_tool_call(message: Message, text: str, *, input_kind: str = "te
             await message.answer("Нельзя безопасно объединить два commit-действия в один план. Выбери отдельно: «Сделать купон» или «Сделать репрайс».")
             return
 
+        topic = classify_advice_topic(text)
+        if _looks_like_advice_query(text) and topic != AdviceTopic.NONE:
+            playbook = build_playbook(topic, preset_id=topic.value)
+            if playbook is not None:
+                await _render_advice(message, advice_payload=playbook.advice, confidence=1.0, intent_source="RULE")
+                await write_audit_event("advice_playbook_used", {"topic": topic.value, "preset_id": playbook.preset_id}, correlation_id=correlation_id)
+                return
+
         try:
             llm_intent, provider = await llm_plan_intent(text=text, settings=settings, registry=registry)
         except Exception as exc:
@@ -418,24 +481,12 @@ async def handle_tool_call(message: Message, text: str, *, input_kind: str = "te
             if advice is None:
                 await message.answer("Не смог подготовить рекомендации. /help")
                 return
-            advice_for_quality = advice.model_copy(update={"confidence": llm_intent.confidence})
+            await _render_advice(message, advice_payload=advice, confidence=llm_intent.confidence, intent_source="LLM")
+            sanitized = sanitize_advice_payload(advice)
             badge = assess_advice_intent(
-                advice_for_quality,
+                sanitized.model_copy(update={"confidence": llm_intent.confidence}),
                 QualityContext(intent_source="LLM", intent_kind="ADVICE", tool_name=None),
             )
-            lines = [format_quality_header(badge), "🧭 Гипотезы:"]
-            lines.extend([f"• {item}" for item in advice.bullets[:5]])
-            if advice.experiments:
-                lines.append("\n🔬 Эксперименты:")
-                lines.extend([f"• {item}" for item in advice.experiments[:5]])
-            if badge.warnings:
-                lines.append("\n⚠️ Проверка качества:")
-                lines.extend([f"• {item}" for item in badge.warnings[:3]])
-            keyboard = await _build_advice_tools_keyboard(
-                owner_user_id=message.from_user.id,
-                suggested_tools=[tool.model_dump() for tool in advice.suggested_tools],
-            )
-            await message.answer("\n".join(lines), reply_markup=keyboard)
             quality_payload = {
                 "intent_source": "LLM",
                 "intent_kind": llm_intent.intent_kind,
@@ -455,6 +506,8 @@ async def handle_tool_call(message: Message, text: str, *, input_kind: str = "te
                     "correlation_id": correlation_id,
                 },
             )
+            await write_audit_event("advice_tools_suggested", {"count": len(sanitized.suggested_tools)}, correlation_id=correlation_id)
+            await write_audit_event("advice_actions_suggested", {"count": len(sanitized.suggested_actions)}, correlation_id=correlation_id)
             await write_audit_event("quality_assessment", quality_payload, correlation_id=correlation_id)
             await write_audit_event("advice_quality", quality_payload, correlation_id=correlation_id)
             await write_retrospective_event(
@@ -924,6 +977,37 @@ async def _handle_voice_templates_shortcut(message: Message, transcript: str) ->
 
 
 
+
+
+@router.callback_query(F.data.startswith("advisor:preset:"))
+async def advisor_preset(callback_query: CallbackQuery) -> None:
+    if callback_query.data is None or callback_query.message is None:
+        return
+    topic_raw = callback_query.data.replace("advisor:preset:", "", 1)
+    try:
+        topic = AdviceTopic(topic_raw)
+    except ValueError:
+        await callback_query.answer("Неизвестный пресет", show_alert=True)
+        return
+    playbook = build_playbook(topic, preset_id=topic.value)
+    if playbook is None:
+        await callback_query.answer("Пресет недоступен", show_alert=True)
+        return
+    advice = sanitize_advice_payload(playbook.advice)
+    badge = assess_advice_intent(advice.model_copy(update={"confidence": 1.0}), QualityContext(intent_source="RULE", intent_kind="ADVICE", tool_name=None))
+    text = format_advice_text(advice, format_quality_header(badge), badge.warnings)
+    keyboard = await _build_advice_keyboard(
+        owner_user_id=callback_query.from_user.id,
+        suggested_tools=[tool.model_dump() for tool in advice.suggested_tools],
+        suggested_actions=[action.model_dump() for action in advice.suggested_actions],
+    )
+    await callback_query.message.edit_text(text, reply_markup=keyboard)
+    correlation_id = get_correlation_id()
+    await write_audit_event("advice_playbook_used", {"topic": topic.value, "preset_id": playbook.preset_id}, correlation_id=correlation_id)
+    await write_audit_event("advice_tools_suggested", {"count": len(advice.suggested_tools)}, correlation_id=correlation_id)
+    await write_audit_event("advice_actions_suggested", {"count": len(advice.suggested_actions)}, correlation_id=correlation_id)
+    await callback_query.answer()
+
 @router.callback_query(F.data == _WIZARD_CANCEL_CB)
 async def cancel_action_wizard(callback_query: CallbackQuery) -> None:
     if callback_query.message is None:
@@ -945,13 +1029,13 @@ async def wizard_preset_value(callback_query: CallbackQuery) -> None:
     await _handle_existing_wizard(callback_query.message, value)
     await callback_query.answer()
 
-@router.callback_query(F.data.startswith(_ADVICE_TOOL_PREFIX))
-async def run_advice_suggested_tool(callback_query: CallbackQuery) -> None:
+@router.callback_query(F.data.startswith(_ADVICE_VALIDATE_PREFIX))
+async def run_advice_validation_tools(callback_query: CallbackQuery) -> None:
     if callback_query.data is None:
         return
-    token = callback_query.data.replace(_ADVICE_TOOL_PREFIX, "", 1)
+    token = callback_query.data.replace(_ADVICE_VALIDATE_PREFIX, "", 1)
     redis = await get_redis()
-    raw = await redis.get(f"{_ADVICE_TOOL_PREFIX}{token}")
+    raw = await redis.get(f"{_ADVICE_VALIDATE_PREFIX}{token}")
     if not raw:
         await callback_query.answer("Рекомендация устарела", show_alert=True)
         return
@@ -959,25 +1043,84 @@ async def run_advice_suggested_tool(callback_query: CallbackQuery) -> None:
     if int(data.get("owner_user_id", 0)) != int(callback_query.from_user.id):
         await callback_query.answer("Недоступно", show_alert=True)
         return
-    await redis.delete(f"{_ADVICE_TOOL_PREFIX}{token}")
-    tool_name = str(data.get("tool") or "")
-    payload = dict(data.get("payload") or {})
+    tools = list(data.get("suggested_tools") or [])[:5]
+    results: list[str] = []
+    success_count = 0
+    for idx, item in enumerate(tools, start=1):
+        tool_name = str(item.get("tool") or "")
+        tool_def = registry.get(tool_name)
+        if not tool_name or (tool_def and tool_def.kind == "action"):
+            continue
+        response = await run_tool(
+            tool_name,
+            dict(item.get("payload") or {}),
+            callback_query=callback_query,
+            actor=ToolActor(owner_user_id=callback_query.from_user.id),
+            tenant=ToolTenant(project="OwnerBot", shop_id="shop_001", currency="EUR", timezone="Europe/Berlin", locale="ru-RU"),
+            correlation_id=get_correlation_id(),
+            registry=registry,
+            intent_source="LLM",
+        )
+        if response.status == "ok":
+            success_count += 1
+        formatted_text, _ = format_tool_response_with_quality(response, intent_source="LLM", tool_name=tool_name)
+        short = formatted_text.split("\n", 1)[0]
+        results.append(f"{idx}. {tool_name}: {short}")
+    summary = "🧪 Проверка данными\n\n" + ("\n".join(results) if results else "Нет доступных REPORT-инструментов.")
+    await callback_query.message.answer(summary)
     correlation_id = get_correlation_id()
-    response = await run_tool(
-        tool_name,
-        payload,
-        callback_query=callback_query,
-        actor=ToolActor(owner_user_id=callback_query.from_user.id),
-        tenant=ToolTenant(project="OwnerBot", shop_id="shop_001", currency="EUR", timezone="Europe/Berlin", locale="ru-RU"),
+    await write_audit_event(
+        "advice_data_validation_run",
+        {"tools_count": len(tools), "success_count": success_count},
         correlation_id=correlation_id,
-        registry=registry,
-        intent_source="LLM",
     )
-    formatted_text, quality_payload = format_tool_response_with_quality(response, intent_source="LLM", tool_name=tool_name)
-    await callback_query.message.answer(formatted_text)
-    await write_audit_event("quality_assessment", quality_payload, correlation_id=correlation_id)
-    await write_audit_event("tool_result_quality", quality_payload, correlation_id=correlation_id)
     await callback_query.answer()
+
+
+@router.callback_query(F.data.startswith(_ADVICE_ACTION_PREFIX))
+async def run_advice_action_preview(callback_query: CallbackQuery) -> None:
+    if callback_query.data is None:
+        return
+    token = callback_query.data.replace(_ADVICE_ACTION_PREFIX, "", 1)
+    redis = await get_redis()
+    raw = await redis.get(f"{_ADVICE_ACTION_PREFIX}{token}")
+    if not raw:
+        await callback_query.answer("Рекомендация устарела", show_alert=True)
+        return
+    data = json.loads(raw)
+    if int(data.get("owner_user_id", 0)) != int(callback_query.from_user.id):
+        await callback_query.answer("Недоступно", show_alert=True)
+        return
+    action = next(iter(data.get("suggested_actions") or []), None)
+    if not action:
+        await callback_query.answer("Нет предложенных действий", show_alert=True)
+        return
+    plan = _plan_from_suggested_action(action)
+    if plan is None:
+        await callback_query.answer("Не удалось собрать preview", show_alert=True)
+        return
+    correlation_id = get_correlation_id()
+    plan_result = await execute_plan_preview(
+        plan,
+        {
+            "settings": get_settings(),
+            "correlation_id": correlation_id,
+            "message": callback_query.message,
+            "chat_id": callback_query.message.chat.id,
+            "actor": ToolActor(owner_user_id=callback_query.from_user.id),
+            "tenant": ToolTenant(project="OwnerBot", shop_id="shop_001", currency="EUR", timezone="Europe/Berlin", locale="ru-RU"),
+            "idempotency_key": str(uuid.uuid4()),
+        },
+    )
+    formatted_text, _ = format_tool_response_with_quality(plan_result.response, intent_source="RULE", tool_name=plan.steps[0].tool_name)
+    preview_text = f"{formatted_text}\n\n{plan_result.preview_text}"
+    markup = None
+    if plan_result.confirm_needed and plan_result.confirm_cb_data and plan_result.confirm_only_main_cb_data and plan_result.cancel_cb_data:
+        markup = _plan_confirm_markup(plan_result.confirm_cb_data, plan_result.confirm_only_main_cb_data, plan_result.cancel_cb_data)
+    await callback_query.message.answer(preview_text, reply_markup=markup)
+    await callback_query.answer()
+
+
 
 @router.message(Command("flag"))
 async def handle_flag_command(message: Message) -> None:

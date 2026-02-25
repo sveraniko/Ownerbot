@@ -42,7 +42,9 @@ class OpenAIPlanner:
                                 "type": ["object", "null"],
                                 "additionalProperties": False,
                                 "properties": {
+                                    "title": {"type": "string"},
                                     "bullets": {"type": "array", "items": {"type": "string"}},
+                                    "risks": {"type": "array", "items": {"type": "string"}},
                                     "experiments": {"type": "array", "items": {"type": "string"}},
                                     "suggested_tools": {
                                         "type": "array",
@@ -55,9 +57,24 @@ class OpenAIPlanner:
                                             },
                                             "required": ["tool", "payload"]
                                         }
+                                    },
+                                    "suggested_actions": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "additionalProperties": False,
+                                            "properties": {
+                                                "label": {"type": "string"},
+                                                "plan_hint": {"type": ["string", "null"]},
+                                                "tool": {"type": ["string", "null"]},
+                                                "payload_partial": {"type": "object", "additionalProperties": True},
+                                                "why": {"type": "string"}
+                                            },
+                                            "required": ["label", "plan_hint", "tool", "payload_partial", "why"]
+                                        }
                                     }
                                 },
-                                "required": ["bullets", "experiments", "suggested_tools"]
+                                "required": ["title", "bullets", "risks", "experiments", "suggested_tools", "suggested_actions"]
                             },
                             "error_message": {"type": ["string", "null"]},
                             "confidence": {"type": "number", "minimum": 0, "maximum": 1},

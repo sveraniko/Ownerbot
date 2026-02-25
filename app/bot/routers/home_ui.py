@@ -10,6 +10,7 @@ from app.bot.ui.home_panel import build_home_text
 from app.bot.ui.home_render import render_home_panel
 from app.bot.ui.sections import (
     build_dashboard_panel,
+    build_advisor_panel,
     build_focus_burn_panel,
     build_focus_money_panel,
     build_focus_stock_panel,
@@ -45,6 +46,13 @@ async def ui_templates(callback_query: CallbackQuery) -> None:
 @router.callback_query(F.data == "ui:dash")
 async def ui_dash(callback_query: CallbackQuery) -> None:
     text, keyboard = build_dashboard_panel()
+    await callback_query.message.edit_text(text, reply_markup=keyboard)
+    await callback_query.answer()
+
+
+@router.callback_query(F.data == "ui:advisor")
+async def ui_advisor(callback_query: CallbackQuery) -> None:
+    text, keyboard = build_advisor_panel()
     await callback_query.message.edit_text(text, reply_markup=keyboard)
     await callback_query.answer()
 

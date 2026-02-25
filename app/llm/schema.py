@@ -8,12 +8,24 @@ from pydantic import BaseModel, Field, model_validator
 class AdviceSuggestedTool(BaseModel):
     tool: str
     payload: dict = Field(default_factory=dict)
+    why: str = ""
+
+
+class AdviceSuggestedAction(BaseModel):
+    label: str
+    plan_hint: str | None = None
+    tool: str | None = None
+    payload_partial: dict = Field(default_factory=dict)
+    why: str = ""
 
 
 class AdvicePayload(BaseModel):
+    title: str = ""
     bullets: list[str] = Field(default_factory=list)
+    risks: list[str] = Field(default_factory=list)
     experiments: list[str] = Field(default_factory=list)
     suggested_tools: list[AdviceSuggestedTool] = Field(default_factory=list)
+    suggested_actions: list[AdviceSuggestedAction] = Field(default_factory=list)
 
 
 class LLMIntent(BaseModel):
