@@ -10,6 +10,7 @@ from app.llm.schema import AdvicePayload, AdviceSuggestedTool, LLMIntent
 class _DummyMessage:
     def __init__(self) -> None:
         self.from_user = SimpleNamespace(id=99)
+        self.chat = SimpleNamespace(id=77)
         self.answers = []
 
     async def answer(self, text: str, reply_markup=None):
@@ -65,3 +66,37 @@ async def test_owner_console_advice_does_not_auto_run_tools(monkeypatch) -> None
     assert msg.answers
     assert msg.answers[-1][0].startswith("🧭")
     assert "Гипотезы" in msg.answers[-1][0]
+
+
+@pytest.mark.asyncio
+async def test_owner_console_trigger_builds_data_brief(monkeypatch) -> None:
+    from app.bot.routers import owner_console
+
+    msg = _DummyMessage()
+    observed = {"brief": 0}
+
+    async def _build_data_brief(*args, **kwargs):
+        observed["brief"] += 1
+        return SimpleNamespace(tools_run=[{"tool": "kpi_compare"}], summary="s", warnings=[])
+
+    async def _noop(*args, **kwargs):
+        return None
+
+    class _Redis:
+        async def set(self, *args, **kwargs):
+            return True
+
+    async def _get_redis():
+        return _Redis()
+
+    monkeypatch.setattr(owner_console, "route_intent", lambda text: SimpleNamespace(tool=None, payload={}, presentation=None, error_message="Не понял"))
+    monkeypatch.setattr(owner_console, "_build_data_brief", _build_data_brief)
+    monkeypatch.setattr(owner_console, "get_redis", _get_redis)
+    monkeypatch.setattr(owner_console, "get_settings", lambda: SimpleNamespace(upstream_mode="DEMO", llm_provider="MOCK", llm_intent_enabled=False))
+    monkeypatch.setattr(owner_console, "write_audit_event", _noop)
+    monkeypatch.setattr(owner_console, "write_retrospective_event", _noop)
+
+    await owner_console.handle_tool_call(msg, "на основе наших данных что делать с ценами?")
+
+    assert observed["brief"] == 1
+    assert msg.answers
