@@ -41,7 +41,11 @@ async def test_advisor_preset_renders_anchor_and_buttons(monkeypatch) -> None:
     async def _noop(*args, **kwargs):
         return None
 
+    async def _brief(*args, **kwargs):
+        return SimpleNamespace(tools_run=[{"tool": "top_products"}], summary="s", warnings=[])
+
     monkeypatch.setattr(owner_console, "get_redis", _get_redis)
+    monkeypatch.setattr(owner_console, "_build_data_brief", _brief)
     monkeypatch.setattr(owner_console, "write_audit_event", _noop)
 
     cb = _DummyCallback("advisor:preset:SEASON_TRENDS")

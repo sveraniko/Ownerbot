@@ -49,7 +49,16 @@ from app.core.settings import get_settings
 from app.core.audit import write_audit_event
 from app.advice.classifier import AdviceTopic, classify_advice_topic
 from app.advice.playbooks import build_playbook
-from app.advice.sanitizer import format_advice_text, sanitize_advice_payload
+from app.advice.data_brief import (
+    DataBriefResult,
+    is_cooldown_active,
+    load_cached_brief,
+    run_tool_set_sequential,
+    save_brief_cache,
+    select_tool_set,
+    set_brief_cooldown,
+)
+from app.advice.sanitizer import format_advice_text, sanitize_advice_payload, synthesize_advice
 from app.llm.router import llm_plan_intent
 from app.quality.models import QualityContext
 from app.quality.verifier import assess_advice_intent, format_quality_header
@@ -65,6 +74,7 @@ registry = build_registry()
 _ADVICE_TOOL_PREFIX = "llm:advice_tool:"
 _ADVICE_VALIDATE_PREFIX = "llm:advice_validate:"
 _ADVICE_ACTION_PREFIX = "llm:advice_action:"
+_ADVICE_BRIEF_REFRESH_PREFIX = "advice:brief:refresh:"
 _WIZARD_KEY_PREFIX = "ownerbot:action_wizard:"
 _WIZARD_TTL_SECONDS = 900
 _WIZARD_CANCEL_CB = "ownerbot:wizard:cancel"
@@ -77,6 +87,64 @@ def _looks_like_advice_query(text: str) -> bool:
     lowered = text.lower()
     markers = ("что", "как", "почему", "совет", "стоит ли", "где", "когда")
     return any(marker in lowered for marker in markers) or "?" in text
+
+
+def _is_data_brief_trigger(text: str) -> bool:
+    lowered = text.lower()
+    triggers = (
+        "на основе наших данных",
+        "по нашим данным",
+        "по статистике",
+        "по данным магазина",
+    )
+    return any(item in lowered for item in triggers)
+
+
+async def _build_data_brief(message: Message, topic: AdviceTopic, *, source: str, force_refresh: bool = False) -> DataBriefResult | None:
+    chat_id = message.chat.id
+    correlation_id = get_correlation_id()
+    cached = await load_cached_brief(chat_id, topic)
+    if cached is not None and not force_refresh:
+        await write_audit_event("advice_data_brief_cache_hit", {"topic": topic.value}, correlation_id=correlation_id)
+        return cached
+    if force_refresh and await is_cooldown_active(chat_id, topic):
+        await write_audit_event("advice_data_brief_refresh_blocked_cooldown", {"topic": topic.value}, correlation_id=correlation_id)
+        await message.answer("⏳ Бриф недавно обновляли, подожди 2 минуты.")
+        return cached
+    if cached is None and await is_cooldown_active(chat_id, topic):
+        await write_audit_event("advice_data_brief_refresh_blocked_cooldown", {"topic": topic.value}, correlation_id=correlation_id)
+        await message.answer("⏳ Подожди 2 минуты перед следующим сбором брифа.")
+        return None
+
+    calls = select_tool_set(topic)
+    await write_audit_event("advice_data_brief_requested", {"topic": topic.value, "source": source}, correlation_id=correlation_id)
+
+    async def _runner(tool_name: str, payload: dict) -> ToolResponse:
+        tool_def = registry.get(tool_name)
+        if tool_def is None or tool_def.kind == "action":
+            return ToolResponse.fail(correlation_id=correlation_id, code="REPORT_ONLY_ENFORCED", message="Data Brief can run REPORT tools only.")
+        return await run_tool(
+            tool_name,
+            payload,
+            message=message,
+            actor=ToolActor(owner_user_id=message.from_user.id),
+            tenant=ToolTenant(project="OwnerBot", shop_id="shop_001", currency="EUR", timezone="Europe/Berlin", locale="ru-RU"),
+            correlation_id=correlation_id,
+            registry=registry,
+            intent_source="RULE",
+        )
+
+    brief = await run_tool_set_sequential(topic=topic, tool_runner=_runner, calls=calls)
+    await save_brief_cache(chat_id, brief)
+    await set_brief_cooldown(chat_id, topic)
+    ok_count = sum(1 for item in brief.tools_run if item.get("ok"))
+    warnings_count = sum(int(item.get("warnings_count") or 0) for item in brief.tools_run)
+    await write_audit_event(
+        "advice_data_brief_built",
+        {"topic": topic.value, "tools_count": len(brief.tools_run), "ok_count": ok_count, "warnings_count": warnings_count},
+        correlation_id=correlation_id,
+    )
+    return brief
 
 _WIZARD_QUESTIONS: dict[str, dict[str, dict[str, object]]] = {
     "create_coupon": {
@@ -286,7 +354,15 @@ async def _handle_existing_wizard(message: Message, text: str) -> bool:
     return True
 
 
-async def _store_advice_bundle(owner_user_id: int, *, suggested_tools: list[dict], suggested_actions: list[dict]) -> tuple[str, str] | None:
+async def _store_advice_bundle(
+    owner_user_id: int,
+    *,
+    suggested_tools: list[dict],
+    suggested_actions: list[dict],
+    topic: AdviceTopic | None = None,
+    has_brief: bool = False,
+    brief_tools: list[str] | None = None,
+) -> tuple[str, str] | None:
     if not suggested_tools and not suggested_actions:
         return None
     redis = await get_redis()
@@ -296,6 +372,9 @@ async def _store_advice_bundle(owner_user_id: int, *, suggested_tools: list[dict
         "owner_user_id": owner_user_id,
         "suggested_tools": suggested_tools[:5],
         "suggested_actions": suggested_actions[:3],
+        "topic": topic.value if topic else None,
+        "has_brief": has_brief,
+        "brief_tools": (brief_tools or [])[:5],
     }
     raw = json.dumps(payload)
     try:
@@ -306,12 +385,29 @@ async def _store_advice_bundle(owner_user_id: int, *, suggested_tools: list[dict
     return validate_token, action_token
 
 
-async def _build_advice_keyboard(owner_user_id: int, *, suggested_tools: list[dict], suggested_actions: list[dict]) -> InlineKeyboardMarkup | None:
-    stored = await _store_advice_bundle(owner_user_id, suggested_tools=suggested_tools, suggested_actions=suggested_actions)
+async def _build_advice_keyboard(
+    owner_user_id: int,
+    *,
+    suggested_tools: list[dict],
+    suggested_actions: list[dict],
+    topic: AdviceTopic | None = None,
+    has_brief: bool = False,
+    brief_tools: list[str] | None = None,
+) -> InlineKeyboardMarkup | None:
+    stored = await _store_advice_bundle(
+        owner_user_id,
+        suggested_tools=suggested_tools,
+        suggested_actions=suggested_actions,
+        topic=topic if (topic is not None and topic != AdviceTopic.NONE) else None,
+        has_brief=has_brief,
+        brief_tools=brief_tools,
+    )
     if stored is None:
         return None
     validate_token, action_token = stored
     rows: list[list[InlineKeyboardButton]] = []
+    if topic is not None:
+        rows.append([InlineKeyboardButton(text="🔄 Обновить бриф", callback_data=f"{_ADVICE_BRIEF_REFRESH_PREFIX}{topic.value}")])
     if suggested_tools:
         rows.append([InlineKeyboardButton(text="✅ Проверить данными", callback_data=f"{_ADVICE_VALIDATE_PREFIX}{validate_token}")])
     if suggested_actions:
@@ -331,15 +427,29 @@ def _plan_from_suggested_action(action: dict, *, source: str = "RULE_PHRASE_PACK
     return PlanIntent(plan_id=str(uuid.uuid4()), source=source, steps=[step], summary=str(action.get("why") or "Advice action preview"), confidence=1.0)
 
 
-async def _render_advice(message: Message, *, advice_payload, confidence: float, intent_source: str) -> None:
+async def _render_advice(
+    message: Message,
+    *,
+    topic: AdviceTopic | None,
+    question_text: str,
+    advice_payload,
+    confidence: float,
+    intent_source: str,
+    brief: DataBriefResult | None = None,
+) -> None:
     sanitized = sanitize_advice_payload(advice_payload)
-    advice_for_quality = sanitized.model_copy(update={"confidence": confidence})
+    topic_value = topic.value if isinstance(topic, AdviceTopic) else AdviceTopic.NONE.value
+    synthesized = synthesize_advice(topic=topic_value, question_text=question_text, advice=sanitized, brief=brief)
+    advice_for_quality = synthesized.model_copy(update={"confidence": confidence})
     badge = assess_advice_intent(advice_for_quality, QualityContext(intent_source=intent_source, intent_kind="ADVICE", tool_name=None))
-    text = format_advice_text(sanitized, format_quality_header(badge), badge.warnings)
+    text = format_advice_text(synthesized, format_quality_header(badge), badge.warnings, brief=brief)
     keyboard = await _build_advice_keyboard(
         owner_user_id=message.from_user.id,
-        suggested_tools=[tool.model_dump() for tool in sanitized.suggested_tools],
-        suggested_actions=[action.model_dump() for action in sanitized.suggested_actions],
+        suggested_tools=[tool.model_dump() for tool in synthesized.suggested_tools],
+        suggested_actions=[action.model_dump() for action in synthesized.suggested_actions],
+        topic=topic if (topic is not None and topic != AdviceTopic.NONE) else None,
+        has_brief=brief is not None,
+        brief_tools=[str(item.get("tool") or "") for item in (brief.tools_run if brief else [])],
     )
     await message.answer(text, reply_markup=keyboard)
 
@@ -444,7 +554,18 @@ async def handle_tool_call(message: Message, text: str, *, input_kind: str = "te
         if _looks_like_advice_query(text) and topic != AdviceTopic.NONE:
             playbook = build_playbook(topic, preset_id=topic.value)
             if playbook is not None:
-                await _render_advice(message, advice_payload=playbook.advice, confidence=1.0, intent_source="RULE")
+                brief = None
+                if _is_data_brief_trigger(text):
+                    brief = await _build_data_brief(message, topic, source="text")
+                await _render_advice(
+                    message,
+                    topic=topic if (topic is not None and topic != AdviceTopic.NONE) else None,
+                    question_text=text,
+                    advice_payload=playbook.advice,
+                    confidence=1.0,
+                    intent_source="RULE",
+                    brief=brief,
+                )
                 await write_audit_event("advice_playbook_used", {"topic": topic.value, "preset_id": playbook.preset_id}, correlation_id=correlation_id)
                 return
 
@@ -481,7 +602,19 @@ async def handle_tool_call(message: Message, text: str, *, input_kind: str = "te
             if advice is None:
                 await message.answer("Не смог подготовить рекомендации. /help")
                 return
-            await _render_advice(message, advice_payload=advice, confidence=llm_intent.confidence, intent_source="LLM")
+            brief = None
+            llm_topic = classify_advice_topic(text)
+            if llm_topic != AdviceTopic.NONE and _is_data_brief_trigger(text):
+                brief = await _build_data_brief(message, llm_topic, source="text")
+            await _render_advice(
+                message,
+                topic=llm_topic,
+                question_text=text,
+                advice_payload=advice,
+                confidence=llm_intent.confidence,
+                intent_source="LLM",
+                brief=brief,
+            )
             sanitized = sanitize_advice_payload(advice)
             badge = assess_advice_intent(
                 sanitized.model_copy(update={"confidence": llm_intent.confidence}),
@@ -993,13 +1126,18 @@ async def advisor_preset(callback_query: CallbackQuery) -> None:
     if playbook is None:
         await callback_query.answer("Пресет недоступен", show_alert=True)
         return
+    brief = await _build_data_brief(callback_query.message, topic, source="preset")
     advice = sanitize_advice_payload(playbook.advice)
-    badge = assess_advice_intent(advice.model_copy(update={"confidence": 1.0}), QualityContext(intent_source="RULE", intent_kind="ADVICE", tool_name=None))
-    text = format_advice_text(advice, format_quality_header(badge), badge.warnings)
+    synthesized = synthesize_advice(topic=topic.value, question_text=topic.value, advice=advice, brief=brief)
+    badge = assess_advice_intent(synthesized.model_copy(update={"confidence": 1.0}), QualityContext(intent_source="RULE", intent_kind="ADVICE", tool_name=None))
+    text = format_advice_text(synthesized, format_quality_header(badge), badge.warnings, brief=brief)
     keyboard = await _build_advice_keyboard(
         owner_user_id=callback_query.from_user.id,
-        suggested_tools=[tool.model_dump() for tool in advice.suggested_tools],
-        suggested_actions=[action.model_dump() for action in advice.suggested_actions],
+        suggested_tools=[tool.model_dump() for tool in synthesized.suggested_tools],
+        suggested_actions=[action.model_dump() for action in synthesized.suggested_actions],
+        topic=topic if (topic is not None and topic != AdviceTopic.NONE) else None,
+        has_brief=brief is not None,
+        brief_tools=[str(item.get("tool") or "") for item in (brief.tools_run if brief else [])],
     )
     await callback_query.message.edit_text(text, reply_markup=keyboard)
     correlation_id = get_correlation_id()
@@ -1029,6 +1167,37 @@ async def wizard_preset_value(callback_query: CallbackQuery) -> None:
     await _handle_existing_wizard(callback_query.message, value)
     await callback_query.answer()
 
+@router.callback_query(F.data.startswith(_ADVICE_BRIEF_REFRESH_PREFIX))
+async def refresh_advice_brief(callback_query: CallbackQuery) -> None:
+    if callback_query.data is None or callback_query.message is None:
+        return
+    topic_raw = callback_query.data.replace(_ADVICE_BRIEF_REFRESH_PREFIX, "", 1)
+    try:
+        topic = AdviceTopic(topic_raw)
+    except ValueError:
+        await callback_query.answer("Неизвестная тема", show_alert=True)
+        return
+    playbook = build_playbook(topic, preset_id=topic.value)
+    if playbook is None:
+        await callback_query.answer("Пресет недоступен", show_alert=True)
+        return
+    brief = await _build_data_brief(callback_query.message, topic, source="text", force_refresh=True)
+    advice = sanitize_advice_payload(playbook.advice)
+    synthesized = synthesize_advice(topic=topic.value, question_text=topic.value, advice=advice, brief=brief)
+    badge = assess_advice_intent(synthesized.model_copy(update={"confidence": 1.0}), QualityContext(intent_source="RULE", intent_kind="ADVICE", tool_name=None))
+    text = format_advice_text(synthesized, format_quality_header(badge), badge.warnings, brief=brief)
+    keyboard = await _build_advice_keyboard(
+        owner_user_id=callback_query.from_user.id,
+        suggested_tools=[tool.model_dump() for tool in synthesized.suggested_tools],
+        suggested_actions=[action.model_dump() for action in synthesized.suggested_actions],
+        topic=topic if (topic is not None and topic != AdviceTopic.NONE) else None,
+        has_brief=brief is not None,
+        brief_tools=[str(item.get("tool") or "") for item in (brief.tools_run if brief else [])],
+    )
+    await callback_query.message.edit_text(text, reply_markup=keyboard)
+    await callback_query.answer()
+
+
 @router.callback_query(F.data.startswith(_ADVICE_VALIDATE_PREFIX))
 async def run_advice_validation_tools(callback_query: CallbackQuery) -> None:
     if callback_query.data is None:
@@ -1044,6 +1213,13 @@ async def run_advice_validation_tools(callback_query: CallbackQuery) -> None:
         await callback_query.answer("Недоступно", show_alert=True)
         return
     tools = list(data.get("suggested_tools") or [])[:5]
+    if data.get("has_brief"):
+        await callback_query.message.answer("📌 Бриф уже собран. Нажмите «🔄 Обновить бриф», если нужно перезапустить отчёты.")
+        await callback_query.answer()
+        return
+    brief_tools = {str(item) for item in (data.get("brief_tools") or [])}
+    if brief_tools:
+        tools = [item for item in tools if str(item.get("tool") or "") not in brief_tools]
     results: list[str] = []
     success_count = 0
     for idx, item in enumerate(tools, start=1):
