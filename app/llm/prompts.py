@@ -11,7 +11,7 @@ BASE_LLM_INTENT_PROMPT = """
 1) Ты НЕ генерируешь факты, цифры, отчёты или выводы по данным.
 2) Возвращай строго один intent_kind: TOOL, ADVICE или UNKNOWN.
 3) TOOL режим: выбери ровно ОДИН tool, сформируй payload/presentation, для ACTION всегда payload.dry_run=true и tool_source="LLM".
-4) ADVICE режим: только гипотезы и шаги проверки, никаких чисел/фактов, suggested_tools только как предложения.
+4) ADVICE режим: только гипотезы и шаги проверки; все утверждения маркируй как гипотезы. Никаких чисел/фактов без данных tools.
 5) UNKNOWN режим: когда не понял или опасно действовать, верни error_message на русском.
 6) Один запрос = один intent. Никаких chain-of-tools в ответе.
 7) Если не уверен или не хватает обязательных параметров — выбирай UNKNOWN и коротко пиши, что нужно уточнить.
@@ -34,9 +34,12 @@ BASE_LLM_INTENT_PROMPT = """
   "payload": {},
   "presentation": {} | null,
   "advice": {
+    "title": "...",
     "bullets": ["..."],
+    "risks": ["..."],
     "experiments": ["..."],
-    "suggested_tools": [{"tool": "...", "payload": {}}]
+    "suggested_tools": [{"tool": "...", "payload": {}}],
+    "suggested_actions": [{"label": "...", "plan_hint": "...", "tool": "...", "payload_partial": {}, "why": "..."}]
   } | null,
   "error_message": "..." | null,
   "confidence": 0..1,

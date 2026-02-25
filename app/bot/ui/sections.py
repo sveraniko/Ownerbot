@@ -23,6 +23,7 @@ def build_dashboard_panel() -> tuple[str, InlineKeyboardMarkup]:
             [InlineKeyboardButton(text="🔥 Что горит", callback_data="ui:focus:burn")],
             [InlineKeyboardButton(text="💰 Деньги сегодня", callback_data="ui:focus:money")],
             [InlineKeyboardButton(text="📦 Риски склада", callback_data="ui:focus:stock")],
+            [InlineKeyboardButton(text="🧠 Советник", callback_data="ui:advisor")],
             [InlineKeyboardButton(text="KPI вчера", callback_data="tpl:run:RPT_KPI_YESTERDAY")],
             [InlineKeyboardButton(text="KPI 7 дней", callback_data="tpl:run:RPT_KPI_7D")],
             [InlineKeyboardButton(text="Выручка тренд 30д (PNG)", callback_data="tpl:run:RPT_REVENUE_TREND_30D")],
@@ -195,6 +196,27 @@ def build_tools_panel() -> tuple[str, InlineKeyboardMarkup]:
         [
             [InlineKeyboardButton(text="Список полностью (JSON)", callback_data="tpl:run:ADV_EXPORT_JSON")],
             [InlineKeyboardButton(text="⚙️ Настройки", callback_data="ui:systems")],
+        ]
+    )
+    return text, keyboard
+
+
+def build_advisor_panel() -> tuple[str, InlineKeyboardMarkup]:
+    text = (
+        "🧠 Советник\n\n"
+        "Выберите пресет: получишь гипотезы, риски, план проверки данными и безопасный preview действий."
+    )
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔥 Что качать весна-лето", callback_data="advisor:preset:SEASON_TRENDS")],
+            [InlineKeyboardButton(text="🏷️ Какое промо сделать сейчас", callback_data="advisor:preset:PROMO_STRATEGY")],
+            [InlineKeyboardButton(text="💸 Что делать с ценами", callback_data="advisor:preset:PRICING_STRATEGY")],
+            [InlineKeyboardButton(text="📦 Что чистить в каталоге", callback_data="advisor:preset:ASSORTMENT_STRATEGY")],
+            [InlineKeyboardButton(text="⚙️ Что горит в операционке", callback_data="advisor:preset:OPS_PRIORITY")],
+            [
+                InlineKeyboardButton(text="⬅ Dashboard", callback_data="ui:dash"),
+                InlineKeyboardButton(text="🏠 Home", callback_data="ui:home"),
+            ],
         ]
     )
     return text, keyboard

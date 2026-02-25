@@ -57,12 +57,16 @@ def assess_advice_intent(advice_payload: Any, ctx: QualityContext) -> QualityBad
     experiments = list(getattr(advice_payload, "experiments", []) or [])
     suggested_tools = list(getattr(advice_payload, "suggested_tools", []) or [])
     bullets = list(getattr(advice_payload, "bullets", []) or [])
+    risks = list(getattr(advice_payload, "risks", []) or [])
+    title = str(getattr(advice_payload, "title", "") or "")
 
     if not experiments:
         warnings.append("No verification plan")
+    if not bullets:
+        warnings.append("No hypotheses listed")
     if not suggested_tools:
         warnings.append("No data validation tools suggested")
-    combined_text = " ".join(bullets + experiments)
+    combined_text = " ".join([title] + bullets + risks + experiments)
     if _METRIC_PATTERN.search(combined_text):
         warnings.append("Possible metrics in advice")
 
