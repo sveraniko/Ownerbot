@@ -175,6 +175,7 @@ def build_systems_panel() -> tuple[str, InlineKeyboardMarkup]:
             [InlineKeyboardButton(text="📊 Retro 7d", callback_data="tpl:run:SYS_RETRO_7D")],
             [InlineKeyboardButton(text="📊 Retro 30d", callback_data="tpl:run:SYS_RETRO_30D")],
             [InlineKeyboardButton(text="📦 Gap report", callback_data="tpl:run:SYS_GAPS_30D")],
+            [InlineKeyboardButton(text="⬇️ Export JSON", callback_data="tpl:run:SYS_RETRO_EXPORT_7D")],
             [InlineKeyboardButton(text="Возможности SIS", callback_data="tpl:run:SYS_SIS_ACTIONS_CAPABILITIES")],
             [InlineKeyboardButton(text="Статус онбординга", callback_data="tpl:run:SYS_ONBOARD_STATUS")],
             [InlineKeyboardButton(text="🔌 Источник данных", callback_data="ui:upstream")],

@@ -1,15 +1,35 @@
 from __future__ import annotations
 
+import re
+
 from app.retro.service import RetroGaps, RetroSummary
+
+_EMAIL_RE = re.compile(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", re.IGNORECASE)
+_PHONE_RE = re.compile(r"\+?\d[\d\s().-]{7,}\d")
+
+
+def safe_str(value: object) -> str:
+    text = str(value or "").replace("\n", " ").replace("\r", " ").strip()
+    text = _EMAIL_RE.sub("[redacted_email]", text)
+    text = _PHONE_RE.sub("[redacted_phone]", text)
+    return text[:120]
 
 
 def _fmt_top(items: list[dict[str, object]], key: str) -> str:
     if not items:
         return "нет данных"
-    return ", ".join(f"{item.get(key)}({item.get('count', 0)})" for item in items)
+    return ", ".join(f"{safe_str(item.get(key))}({item.get('count', 0)})" for item in items)
 
 
-def format_retro_summary(summary: RetroSummary) -> str:
+def _fmt_delta(metric: dict[str, object]) -> str:
+    absolute = metric.get("absolute", 0)
+    percent = metric.get("percent")
+    if percent is None:
+        return f"{absolute:+d}" if isinstance(absolute, int) else str(absolute)
+    return f"{absolute:+d} ({percent:+.1f}%)" if isinstance(absolute, int) else f"{absolute} ({percent}%)"
+
+
+def format_retro_summary(summary: RetroSummary, deltas: dict[str, object] | None = None) -> str:
     totals = summary.totals
     routing = summary.routing
     tool_conf = summary.quality["confidence_counts"]["TOOL"]
@@ -48,6 +68,19 @@ def format_retro_summary(summary: RetroSummary) -> str:
         "🧰 Top tools",
         _fmt_top(summary.top_tools, "tool_name"),
     ]
+
+    if deltas:
+        lines.extend(
+            [
+                "",
+                "📈 Trend vs previous window",
+                f"advice: {_fmt_delta(deltas.get('advice_total_delta', {}))}",
+                f"tool calls: {_fmt_delta(deltas.get('tool_calls_total_delta', {}))}",
+                f"plans committed: {_fmt_delta(deltas.get('plans_committed_delta', {}))}",
+                f"memo generated: {_fmt_delta(deltas.get('memo_generated_delta', {}))}",
+                f"unknown total: {_fmt_delta(deltas.get('unknown_total_delta', {}))}",
+            ]
+        )
     return "\n".join(lines)
 
 
@@ -55,7 +88,7 @@ def format_retro_gaps(gaps: RetroGaps) -> str:
     def _bullet(title: str, items: list[dict[str, object]], key: str, hint: str) -> list[str]:
         if not items:
             return [f"• {title}: нет данных", f"  что делать: {hint}"]
-        formatted = ", ".join(f"{item.get(key)}({item.get('count', 0)})" for item in items)
+        formatted = ", ".join(f"{safe_str(item.get(key))}({item.get('count', 0)})" for item in items)
         return [f"• {title}: {formatted}", f"  что делать: {hint}"]
 
     lines = [f"📦 Gap report ({gaps.period_days}d)", ""]

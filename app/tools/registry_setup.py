@@ -70,6 +70,7 @@ from app.tools.impl import (
     onboard_test_run,
     retro_summary,
     retro_gaps,
+    retro_export,
 )
 
 
@@ -143,4 +144,5 @@ def build_registry() -> ToolRegistry:
     registry.register("onboard_test_run", "1.0", onboard_test_run.Payload, onboard_test_run.handle, kind="action")
     registry.register("retro_summary", "1.0", retro_summary.Payload, retro_summary.handle)
     registry.register("retro_gaps", "1.0", retro_gaps.Payload, retro_gaps.handle)
+    registry.register("retro_export", "1.0", retro_export.Payload, retro_export.handle)
     return registry
