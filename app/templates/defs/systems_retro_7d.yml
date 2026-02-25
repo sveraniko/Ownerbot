@@ -1,0 +1,10 @@
+template_id: SYS_RETRO_7D
+category: systems
+title: Retro 7d
+button_text: 📊 Retro 7d
+kind: REPORT
+tool_name: retro_summary
+order: 45
+default_payload:
+  period_days: 7
+inputs: []

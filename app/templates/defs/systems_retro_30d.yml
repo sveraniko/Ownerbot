@@ -1,0 +1,10 @@
+template_id: SYS_RETRO_30D
+category: systems
+title: Retro 30d
+button_text: 📊 Retro 30d
+kind: REPORT
+tool_name: retro_summary
+order: 46
+default_payload:
+  period_days: 30
+inputs: []

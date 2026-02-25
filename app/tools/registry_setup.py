@@ -68,6 +68,8 @@ from app.tools.impl import (
     onboard_status,
     onboard_apply_preset,
     onboard_test_run,
+    retro_summary,
+    retro_gaps,
 )
 
 
@@ -139,4 +141,6 @@ def build_registry() -> ToolRegistry:
     registry.register("onboard_status", "1.0", onboard_status.Payload, onboard_status.handle)
     registry.register("onboard_apply_preset", "1.0", onboard_apply_preset.Payload, onboard_apply_preset.handle, kind="action")
     registry.register("onboard_test_run", "1.0", onboard_test_run.Payload, onboard_test_run.handle, kind="action")
+    registry.register("retro_summary", "1.0", retro_summary.Payload, retro_summary.handle)
+    registry.register("retro_gaps", "1.0", retro_gaps.Payload, retro_gaps.handle)
     return registry
