@@ -1,0 +1,10 @@
+template_id: SYS_GAPS_30D
+category: systems
+title: Gap report 30d
+button_text: 📦 Gap report
+kind: REPORT
+tool_name: retro_gaps
+order: 47
+default_payload:
+  period_days: 30
+inputs: []
