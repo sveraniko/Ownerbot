@@ -8,7 +8,7 @@ import uuid
 
 from aiogram import F, Router
 from aiogram.filters import Command
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from app.actions.confirm_flow import create_confirm_token
 from app.actions.capabilities import capability_support_status, get_sis_capabilities, required_capabilities_for_tool
@@ -47,7 +47,9 @@ from app.core.logging import get_correlation_id
 from app.core.redis import get_redis
 from app.core.settings import get_settings
 from app.core.audit import write_audit_event
+from app.advice.advice_cache import load_last_advice, save_last_advice, utc_now_iso
 from app.advice.classifier import AdviceTopic, classify_advice_topic
+from app.advice.memo_renderer import render_decision_memo_pdf
 from app.advice.playbooks import build_playbook
 from app.advice.data_brief import (
     DataBriefResult,
@@ -75,6 +77,7 @@ _ADVICE_TOOL_PREFIX = "llm:advice_tool:"
 _ADVICE_VALIDATE_PREFIX = "llm:advice_validate:"
 _ADVICE_ACTION_PREFIX = "llm:advice_action:"
 _ADVICE_BRIEF_REFRESH_PREFIX = "advice:brief:refresh:"
+_ADVICE_MEMO_PREFIX = "advice:memo:"
 _WIZARD_KEY_PREFIX = "ownerbot:action_wizard:"
 _WIZARD_TTL_SECONDS = 900
 _WIZARD_CANCEL_CB = "ownerbot:wizard:cancel"
@@ -354,6 +357,30 @@ async def _handle_existing_wizard(message: Message, text: str) -> bool:
     return True
 
 
+async def _save_last_advice_context(
+    message: Message,
+    *,
+    topic: AdviceTopic | None,
+    question_text: str,
+    advice_text: str,
+    synthesized,
+) -> None:
+    payload = {
+        "topic": topic.value if isinstance(topic, AdviceTopic) and topic != AdviceTopic.NONE else AdviceTopic.NONE.value,
+        "question_text": question_text[:240],
+        "advice_text": advice_text[:4000],
+        "hypotheses": [str(item) for item in list(getattr(synthesized, "bullets", []) or [])[:7]],
+        "risks": [str(item) for item in list(getattr(synthesized, "risks", []) or [])[:3]],
+        "experiments": [str(item) for item in list(getattr(synthesized, "experiments", []) or [])[:6]],
+        "suggested_actions": [item.model_dump() for item in list(getattr(synthesized, "suggested_actions", []) or [])[:3]],
+        "created_at": utc_now_iso(),
+    }
+    try:
+        await save_last_advice(message.chat.id, payload)
+    except Exception:
+        return
+
+
 async def _store_advice_bundle(
     owner_user_id: int,
     *,
@@ -393,7 +420,7 @@ async def _build_advice_keyboard(
     topic: AdviceTopic | None = None,
     has_brief: bool = False,
     brief_tools: list[str] | None = None,
-) -> InlineKeyboardMarkup | None:
+) -> InlineKeyboardMarkup:
     stored = await _store_advice_bundle(
         owner_user_id,
         suggested_tools=suggested_tools,
@@ -402,9 +429,10 @@ async def _build_advice_keyboard(
         has_brief=has_brief,
         brief_tools=brief_tools,
     )
-    if stored is None:
-        return None
-    validate_token, action_token = stored
+    validate_token = ""
+    action_token = ""
+    if stored is not None:
+        validate_token, action_token = stored
     rows: list[list[InlineKeyboardButton]] = []
     if topic is not None:
         rows.append([InlineKeyboardButton(text="🔄 Обновить бриф", callback_data=f"{_ADVICE_BRIEF_REFRESH_PREFIX}{topic.value}")])
@@ -412,6 +440,8 @@ async def _build_advice_keyboard(
         rows.append([InlineKeyboardButton(text="✅ Проверить данными", callback_data=f"{_ADVICE_VALIDATE_PREFIX}{validate_token}")])
     if suggested_actions:
         rows.append([InlineKeyboardButton(text="🧩 Предложить действия (preview)", callback_data=f"{_ADVICE_ACTION_PREFIX}{action_token}")])
+    memo_topic = topic.value if isinstance(topic, AdviceTopic) else AdviceTopic.NONE.value
+    rows.append([InlineKeyboardButton(text="📄 Memo (PDF)", callback_data=f"{_ADVICE_MEMO_PREFIX}{memo_topic}")])
     rows.append([InlineKeyboardButton(text="🧠 Советник", callback_data="ui:advisor")])
     rows.append([InlineKeyboardButton(text="🏠 Home", callback_data="ui:home")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -450,6 +480,13 @@ async def _render_advice(
         topic=topic if (topic is not None and topic != AdviceTopic.NONE) else None,
         has_brief=brief is not None,
         brief_tools=[str(item.get("tool") or "") for item in (brief.tools_run if brief else [])],
+    )
+    await _save_last_advice_context(
+        message,
+        topic=topic,
+        question_text=question_text,
+        advice_text=text,
+        synthesized=synthesized,
     )
     await message.answer(text, reply_markup=keyboard)
 
@@ -1194,8 +1231,65 @@ async def refresh_advice_brief(callback_query: CallbackQuery) -> None:
         has_brief=brief is not None,
         brief_tools=[str(item.get("tool") or "") for item in (brief.tools_run if brief else [])],
     )
+    await _save_last_advice_context(
+        callback_query.message,
+        topic=topic,
+        question_text=topic.value,
+        advice_text=text,
+        synthesized=synthesized,
+    )
     await callback_query.message.edit_text(text, reply_markup=keyboard)
     await callback_query.answer()
+
+
+@router.callback_query(F.data.startswith(_ADVICE_MEMO_PREFIX))
+async def generate_advice_memo(callback_query: CallbackQuery) -> None:
+    if callback_query.data is None or callback_query.message is None:
+        return
+    topic_raw = callback_query.data.replace(_ADVICE_MEMO_PREFIX, "", 1)
+    correlation_id = get_correlation_id()
+    advice_cache = await load_last_advice(callback_query.message.chat.id)
+    if not advice_cache:
+        await callback_query.answer("Сначала получи совет/бриф", show_alert=True)
+        await write_audit_event("advice_memo_failed", {"reason": "missing_advice_cache", "topic": topic_raw}, correlation_id=correlation_id)
+        return
+
+    brief = None
+    has_brief = False
+    try:
+        brief_topic = AdviceTopic(topic_raw)
+    except ValueError:
+        brief_topic = AdviceTopic.NONE
+    if brief_topic != AdviceTopic.NONE:
+        brief = await load_cached_brief(callback_query.message.chat.id, brief_topic)
+        has_brief = brief is not None
+
+    try:
+        topic_value = str(advice_cache.get("topic") or topic_raw or AdviceTopic.NONE.value)
+        pdf_bytes = render_decision_memo_pdf(topic=topic_value, brief=brief, advice_cache=advice_cache)
+        await callback_query.message.answer_document(
+            BufferedInputFile(pdf_bytes, filename=f"decision_memo_{topic_value}.pdf"),
+            caption="📄 Decision Memo (PDF)",
+        )
+    except Exception:
+        await callback_query.answer("Не удалось собрать memo", show_alert=True)
+        await write_audit_event("advice_memo_failed", {"reason": "render_error", "topic": topic_raw}, correlation_id=correlation_id)
+        return
+
+    bullets_count = len(list(advice_cache.get("hypotheses") or [])) + len(_brief_facts_lines_for_audit(brief))
+    await write_audit_event(
+        "advice_memo_generated",
+        {"topic": topic_value, "has_brief": has_brief, "bullets_count": bullets_count},
+        correlation_id=correlation_id,
+    )
+    await callback_query.answer("Memo готов")
+
+
+def _brief_facts_lines_for_audit(brief: DataBriefResult | None) -> list[str]:
+    if brief is None:
+        return []
+    lines = [item for item in str(brief.summary or "").split("\n") if item.strip()]
+    return lines[:10]
 
 
 @router.callback_query(F.data.startswith(_ADVICE_VALIDATE_PREFIX))
